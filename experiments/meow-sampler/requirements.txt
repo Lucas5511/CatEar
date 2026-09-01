@@ -1,0 +1,9 @@
+numpy>=1.24
+soundfile>=0.12
+
+# Opcional — pitch-shift de qualidade (preserva formante, menos "chipmunk").
+# Precisa do binário `rubberband` no sistema:
+#   Debian/Ubuntu:  sudo apt install rubberband-cli
+#   macOS:          brew install rubberband
+# Sem ele, render_meows.py cai num resample simples (roda, só soa pior).
+pyrubberband>=0.3
