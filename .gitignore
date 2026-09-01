@@ -8,3 +8,40 @@ _bmad/
 
 # dependencies (add app-specific ones here once the stack is chosen)
 node_modules/
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+build/
+*.iml
+.idea/
+doc/api/
+.pub-cache/
+.pub/
+/coverage/
+
+# Generated code (regenerated in CI)
+**/*.g.dart
+**/*.drift.dart
+
+# Android
+android/.gradle/
+android/captures/
+android/local.properties
+android/key.properties
+**/GeneratedPluginRegistrant.java
+
+# iOS
+ios/Flutter/Flutter.framework/
+ios/Flutter/Flutter.podspec
+ios/Flutter/flutter_export_environment.sh
+ios/Flutter/ephemeral/
+ios/Pods/
+ios/.symlinks/
+**/Flutter/App.framework/
+**/Flutter/ephemeral/
+**/Flutter/Generated.xcconfig
+**/ServiceDefinitions.json
+**/xcuserdata/
