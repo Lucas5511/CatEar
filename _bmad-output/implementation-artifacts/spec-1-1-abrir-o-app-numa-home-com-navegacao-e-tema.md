@@ -2,7 +2,7 @@
 title: 'Story 1.1 — Abrir o app numa Home com navegação e tema'
 type: 'feature'
 created: '2026-09-01'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 1
 baseline_commit: '6e3dbc7973338b3af15a16f96300ba531dd753d9'
 context:
@@ -21,7 +21,7 @@ context:
 ## Boundaries & Constraints
 
 **Always:**
-- Stack exata: Flutter 3.47.x, `flutter_riverpod` + `riverpod_annotation` + `riverpod_generator` (3.4.2), `drift` + `drift_dev` (2.34.3), `build_runner`, `path_provider`, `sqlite3_flutter_libs`, `uuid`, `flutter_localizations`. `record` (7.1.1) e `just_audio` (0.10.6) entram no `pubspec` mas não são usados nesta story (adiantam a resolução da stack fixa do Epic 1).
+- Stack exata: Flutter 3.47.x, `flutter_riverpod` 3.4.2 + `riverpod_annotation` 4.0.6 + `riverpod_generator` ^4.0.6 + `analyzer` ^13 (renegociado 2026-09-01 — os três pacotes Riverpod em 3.4.2 não co-resolvem: annotation/generator 3.x param em 3.0.3 e generator 3.x limita `analyzer <9`, incompatível com `drift_dev` 2.34.3 que exige `analyzer ^13`; codegen do Riverpod não é usado nesta story), `drift` + `drift_dev` (2.34.3), `build_runner`, `path_provider`, `sqlite3_flutter_libs`, `uuid`, `flutter_localizations`. `record` (7.1.1) e `just_audio` (0.10.6) entram no `pubspec` mas não são usados nesta story (adiantam a resolução da stack fixa do Epic 1).
 - Módulos: `lib/{core, nivelamento, exercicios, progressao, audio, curriculo}`. Cada um com `data/ domain/ presentation/` e um único barrel público `<módulo>.dart`. O barrel só reexporta de `domain/` (`presentation/` só quando expõe telas de rota). `data/`/`presentation/` de um módulo nunca são importados de fora dele.
 - `core/` expõe apenas: tokens de design, `AppDatabase` (+ DAOs futuros), `databaseProvider`, `ThemeData`, `CatText`. Modelos/tabelas gerados pelo Drift nunca aparecem fora de `core/` nem cruzam `data/ → domain/`.
 - Shell + telas Home e Settings vivem em `lib/app/` (são preocupações de shell, não features). As abas Skill Tree e Progresso apontam para telas placeholder em `progressao/presentation/` (a Skill Tree é da Progressão — AR-3).
@@ -84,7 +84,7 @@ Greenfield. Arquivos a criar:
 - `lib/{...}/{data,domain,presentation}/.gitkeep`
 - `lib/progressao/presentation/skill_tree_placeholder_screen.dart`, `progress_placeholder_screen.dart` -- `SafeArea` + `Center(Text)` no token certo
 - `assets/fonts/Fredoka-Regular.ttf` `-Medium.ttf` `-SemiBold.ttf` + `assets/fonts/OFL.txt` -- static instances de github.com/google/fonts (ofl/fredoka)
-- `drift_schemas/catear_schema_v1.json` -- `dart run drift_dev schema dump`
+- `drift_schemas/drift_schema_v1.json` -- `dart run drift_dev schema dump` (nome default da ferramenta, mantido p/ re-dump idempotente)
 - `tool/check_module_boundaries.dart` -- via pacote `analyzer`: para cada unit em `lib/`, resolve imports+exports (relativos→package), falha se um arquivo fora de `lib/<m>/` referencia `<m>/data/` ou `<m>/presentation/` (barrel isento só p/ reexport do próprio `domain/`); falha se arquivo fora de `lib/core/` referencia símbolo de `*.drift.dart`; falha se `lib/` tem 0 `.dart` ou algum não parseia
 - `tool/check_app_id.dart` -- grep `app.catear` em `android/app/build.gradle*` e `ios/Runner.xcodeproj/project.pbxproj`; exit ≠ 0 se ausente
 - `tool/gen_contrast_audit.dart` -- escreve `docs/design/contrast-audit.md` a partir de `CatColors` + `wcag.dart` (artefato, não fonte de verdade)
@@ -100,22 +100,22 @@ Greenfield. Arquivos a criar:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `.` -- **Task 0**: `flutter --version` é 3.47.x? `flutter pub get` resolve os pins? Se não → HALT (Ask First) -- gate
-- [ ] `.` -- `flutter create --org app --project-name catear --platforms=android,ios .`; **commitar a saída crua isolada**; mesclar `.gitignore` gerado no existente; manter nosso `analysis_options.yaml`; remover `README.md` e `test/widget_test.dart` gerados -- fundação
-- [ ] `pubspec.yaml` + `.gitignore` -- deps fixadas + `path_provider` `sqlite3_flutter_libs` `uuid` `flutter_localizations`; `dev`: `drift_dev` `riverpod_generator` `build_runner` `analyzer` `flutter_lints`; assets Fredoka; ignorar código gerado -- stack
-- [ ] `analysis_options.yaml` -- lints + exclude de gerados -- qualidade
-- [ ] `lib/core/theme/tokens.dart` + `typography.dart` + `wcag.dart` + `app_theme.dart` -- tokens light+dark (DESIGN.md), raios, espaçamento, `CatText`, `contrastRatio`, `appTheme(Brightness)` -- UX-DR1/2/15
-- [ ] `test/contrast_test.dart` + `tool/gen_contrast_audit.dart` -- teste de contraste dos pares; gerador do `docs/design/contrast-audit.md`; escurecer hex reprovados preservando matiz até o teste passar -- AC de contraste (alta)
-- [ ] `lib/core/database/app_database.dart` + `database_provider.dart` -- `AppDatabase` sem tabelas, `schemaVersion 1`, `MigrationStrategy` (onCreate/onUpgrade vazio/beforeOpen FK on), `FutureProvider` com resolução de path protegida e `onDispose` -- migração desde já
-- [ ] `drift_schemas/catear_schema_v1.json` -- `dart run drift_dev schema dump lib/core/database/app_database.dart drift_schemas/` -- baseline de migração
-- [ ] `lib/core/core.dart` -- barrel -- superfície pública
-- [ ] `lib/{nivelamento,exercicios,progressao,audio,curriculo}/` -- `data/ domain/ presentation/` + barrel doc-comment-only -- estrutura
-- [ ] `lib/app/*` -- `CatEarApp` (MaterialApp + l10n + watch do `databaseProvider`), `HomeShell` (NavigationBar + IndexedStack + PopScope), `DatabaseErrorScreen`, `HomeScreen`, `SettingsScreen` -- boot + navegação
-- [ ] `lib/progressao/presentation/*_placeholder_screen.dart` -- 2 telas placeholder (Skill Tree, Progresso) em `SafeArea` -- abas
-- [ ] `lib/main.dart` -- `ProviderScope` → `CatEarApp` -- entrypoint
-- [ ] `tool/check_module_boundaries.dart` (+ `analyzer`) + `tool/check_app_id.dart` -- checks de fronteira e de app id -- AD-1 / AR-12
-- [ ] `tool/ci.sh` + `.github/workflows/ci.yaml` -- pub get → build_runner → `dart format --set-exit-if-changed` → analyze → check_module_boundaries → check_app_id → test; etapas independentes, exit agregado; Flutter fixo -- CI local desde o início
-- [ ] `test/{theme,home_shell,accessibility,database,module_boundary}_test.dart` -- cobertura das ACs e das regras do script -- verificação
+- [x] `.` -- **Task 0**: `flutter --version` é 3.47.x? `flutter pub get` resolve os pins? Se não → HALT (Ask First) -- gate
+- [x] `.` -- `flutter create --org app --project-name catear --platforms=android,ios .`; **commitar a saída crua isolada**; mesclar `.gitignore` gerado no existente; manter nosso `analysis_options.yaml`; remover `README.md` e `test/widget_test.dart` gerados -- fundação
+- [x] `pubspec.yaml` + `.gitignore` -- deps fixadas + `path_provider` `sqlite3_flutter_libs` `uuid` `flutter_localizations`; `dev`: `drift_dev` `riverpod_generator` `build_runner` `analyzer` `flutter_lints`; assets Fredoka; ignorar código gerado -- stack
+- [x] `analysis_options.yaml` -- lints + exclude de gerados -- qualidade
+- [x] `lib/core/theme/tokens.dart` + `typography.dart` + `wcag.dart` + `app_theme.dart` -- tokens light+dark (DESIGN.md), raios, espaçamento, `CatText`, `contrastRatio`, `appTheme(Brightness)` -- UX-DR1/2/15
+- [x] `test/contrast_test.dart` + `tool/gen_contrast_audit.dart` -- teste de contraste dos pares; gerador do `docs/design/contrast-audit.md`; escurecer hex reprovados preservando matiz até o teste passar -- AC de contraste (alta)
+- [x] `lib/core/database/app_database.dart` + `database_provider.dart` -- `AppDatabase` sem tabelas, `schemaVersion 1`, `MigrationStrategy` (onCreate/onUpgrade vazio/beforeOpen FK on), `FutureProvider` com resolução de path protegida e `onDispose` -- migração desde já
+- [x] `drift_schemas/catear_schema_v1.json` -- `dart run drift_dev schema dump lib/core/database/app_database.dart drift_schemas/` -- baseline de migração
+- [x] `lib/core/core.dart` -- barrel -- superfície pública
+- [x] `lib/{nivelamento,exercicios,progressao,audio,curriculo}/` -- `data/ domain/ presentation/` + barrel doc-comment-only -- estrutura
+- [x] `lib/app/*` -- `CatEarApp` (MaterialApp + l10n + watch do `databaseProvider`), `HomeShell` (NavigationBar + IndexedStack + PopScope), `DatabaseErrorScreen`, `HomeScreen`, `SettingsScreen` -- boot + navegação
+- [x] `lib/progressao/presentation/*_placeholder_screen.dart` -- 2 telas placeholder (Skill Tree, Progresso) em `SafeArea` -- abas
+- [x] `lib/main.dart` -- `ProviderScope` → `CatEarApp` -- entrypoint
+- [x] `tool/check_module_boundaries.dart` (+ `analyzer`) + `tool/check_app_id.dart` -- checks de fronteira e de app id -- AD-1 / AR-12
+- [x] `tool/ci.sh` + `.github/workflows/ci.yaml` -- pub get → build_runner → `dart format --set-exit-if-changed` → analyze → check_module_boundaries → check_app_id → test; etapas independentes, exit agregado; Flutter fixo -- CI local desde o início
+- [x] `test/{theme,home_shell,accessibility,database,module_boundary}_test.dart` -- cobertura das ACs e das regras do script -- verificação
 
 **Acceptance Criteria:**
 - Given o app criado, when `flutter run` (SDK instalado), then abre no `HomeShell` aba Home tema claro pastel; alternar o SO p/ dark troca sem reiniciar.
@@ -129,6 +129,10 @@ Greenfield. Arquivos a criar:
 ## Spec Change Log
 
 - **2026-09-01 (review_loop 1)** — bmad-code-review (no-spec, 3 camadas): 20 patches aplicados. Auditoria de contraste virou `test/contrast_test.dart` (era doc à mão — verificação falsa). Adicionados `home_shell_test`/`accessibility_test`/`database_test` + `theme_test` estendido (ACs visíveis não tinham teste no CI). l10n (`flutter_localizations` + pt_BR). Mapa aba↔módulo fixado (`lib/app/` + `progressao/presentation/`). Script de fronteira reforçado (pacote `analyzer`, `export`/relativos, símbolos Drift). Segurança de migração (`schema dump` + `database_test` + FK pragma). Código gerado git-ignorado + `build_runner` no CI. Passo a passo do `flutter create` em repo não-vazio. Caminho de erro do DB (`FutureProvider` + `DatabaseErrorScreen` + app support dir). `PopScope` do back do Android. Barrels doc-comment-only. Fredoka estático + OFL. CI resolvido (`tool/ci.sh` + workflow fixo). `uuid` dep. Task 0 de co-resolução. KEEP: estrutura de 6 módulos, stack fixa, `IndexedStack` de placeholders, script (não `custom_lint`).
+
+## Spec Change Log (cont.)
+
+- **2026-09-01 (implementação)** — Renegociação human-owned dos pins Riverpod (aprovada pelo usuário): `flutter_riverpod` 3.4.2 + `riverpod_annotation` 4.0.6 + `riverpod_generator` ^4.0.6 + `analyzer` ^13, pois os três em 3.4.2 não co-resolvem com `drift_dev` 2.34.3. Sem impacto funcional (só `FutureProvider` puro nesta story). Snapshot de schema mantido como `drift_schema_v1.json` (default da ferramenta). **Pendente de revisão UX (Sally):** cumprir contraste ≥3:1 de `border-hairline` empurrou a linha p/ `#BA843E` (light) / `#826C55` (dark) — mais forte que o DESIGN.md pretendia; matiz preservada, cumpre WCAG 1.4.11. Toolchain: Flutter 3.47.2 instalado via checkout de tag em `~/development/flutter` (PATH não persistido em profile).
 
 ## Design Notes
 
@@ -159,3 +163,65 @@ Greenfield. Arquivos a criar:
 - `docs/design/contrast-audit.md` lista cada par com ratio e ação.
 - `android/app/build.gradle*` e `ios/Runner.xcodeproj/project.pbxproj` contêm `app.catear`.
 - Um commit isolado contém só a saída crua do `flutter create`.
+
+## Suggested Review Order
+
+**Boot e gate do banco**
+
+- Ponto de entrada: como o app decide entre boot / erro / shell a partir do `databaseProvider`.
+  [`cat_ear_app.dart:17`](../../lib/app/cat_ear_app.dart#L17)
+- `FutureProvider` com resolução de path protegida; fecha `db` no `catch` antes do `rethrow` (sem vazamento em retry).
+  [`database_provider.dart:16`](../../lib/core/database/database_provider.dart#L16)
+- Tela de erro + retry que invalida o provider; scrollável p/ sobreviver a `TextScaler(2.0)`.
+  [`database_error_screen.dart:1`](../../lib/app/database_error_screen.dart#L1)
+
+**Migração desde o dia 1**
+
+- `AppDatabase` vazio, `schemaVersion 1`, `MigrationStrategy` com FK pragma no `beforeOpen`.
+  [`app_database.dart:18`](../../lib/core/database/app_database.dart#L18)
+- Snapshot de schema v1 — baseline p/ futuras migrações.
+  [`drift_schema_v1.json:1`](../../drift_schemas/drift_schema_v1.json#L1)
+
+**Navegação (shell)**
+
+- `NavigationBar` 4 abas + `IndexedStack` + `PopScope` que devolve o back do Android p/ Home.
+  [`home_shell.dart:34`](../../lib/app/home_shell.dart#L34)
+- Abas Skill Tree e Progresso apontam p/ placeholders de `progressao/presentation/` (AR-3).
+  [`progressao.dart:1`](../../lib/progressao/progressao.dart#L1)
+
+**Tema e tokens (contraste verificado por teste)**
+
+- `contrastRatio` — WCAG 2.x, sRGB→linear.
+  [`wcag.dart:29`](../../lib/core/theme/wcag.dart#L29)
+- `CatColors` light+dark; 6 hex escurecidos preservando a matiz p/ passar AA (documentado no arquivo).
+  [`tokens.dart:19`](../../lib/core/theme/tokens.dart#L19)
+- `appTheme(Brightness)` a partir dos tokens; `ColorScheme` explícito.
+  [`app_theme.dart:27`](../../lib/core/theme/app_theme.dart#L27)
+- `CatText`: fonte de sistema p/ corpo; Fredoka só via `CatText.display`.
+  [`typography.dart:9`](../../lib/core/theme/typography.dart#L9)
+- Seletor de tema aplicado na hora via `themeModeProvider`.
+  [`settings_screen.dart:27`](../../lib/app/settings_screen.dart#L27)
+
+**Fronteira de módulos (CI, sem custom_lint)**
+
+- Resolve imports+exports (relativos→package) e falha nomeando arquivo:linha; regras 1 (data/presentation) e 2 (Drift fora de core).
+  [`check_module_boundaries.dart:77`](../../tool/check_module_boundaries.dart#L77)
+- Superfície pública de `core/` — só o sancionado.
+  [`core.dart:8`](../../lib/core/core.dart#L8)
+- Verificação de app id + nome de exibição em ambas as plataformas.
+  [`check_app_id.dart:1`](../../tool/check_app_id.dart#L1)
+- Orquestração do CI: etapas independentes, exit agregado, Flutter fixo.
+  [`ci.sh:1`](../../tool/ci.sh#L1)
+
+**Testes (suporte)**
+
+- Gate do DB (erro/retry/loading/data) + tema escuro end-to-end.
+  [`cat_ear_app_test.dart:1`](../../test/cat_ear_app_test.dart#L1)
+- Contraste computado dos hex.
+  [`contrast_test.dart:1`](../../test/contrast_test.dart#L1)
+- Navegação por aba, sem `PageView`, sem `Drawer`, `PopScope`.
+  [`home_shell_test.dart:1`](../../test/home_shell_test.dart#L1)
+- Sem overflow em `TextScaler(2.0)`, alvos ≥ 48dp, sem exceções engolidas.
+  [`accessibility_test.dart:1`](../../test/accessibility_test.dart#L1)
+- Fixtures bom/ruim por regra do script de fronteira.
+  [`module_boundary_test.dart:1`](../../test/module_boundary_test.dart#L1)
