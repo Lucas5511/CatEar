@@ -18,7 +18,7 @@ NavigationBar _navBar(WidgetTester tester) =>
 void main() {
   testWidgets('starts on the Home tab', (tester) async {
     await tester.pumpWidget(_app());
-    expect(find.text('Bem-vinda ao CatEar!'), findsOneWidget);
+    expect(find.text('Que bom ter você no CatEar!'), findsOneWidget);
     expect(_navBar(tester).selectedIndex, 0);
   });
 
@@ -46,6 +46,7 @@ void main() {
   testWidgets('no swipe navigation (no PageView)', (tester) async {
     await tester.pumpWidget(_app());
     expect(find.byType(PageView), findsNothing);
+    expect(find.byType(Drawer), findsNothing);
     expect(find.byType(IndexedStack), findsOneWidget);
   });
 

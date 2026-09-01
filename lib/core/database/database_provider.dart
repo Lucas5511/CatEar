@@ -14,7 +14,7 @@ import 'app_database.dart';
 /// [AsyncError] on this provider; the UI shows `DatabaseErrorScreen` with a
 /// retry that invalidates this provider.
 final databaseProvider = FutureProvider<AppDatabase>((ref) async {
-  final AppDatabase db;
+  AppDatabase? db;
   try {
     final dir = await getApplicationSupportDirectory();
     final file = File(p.join(dir.path, 'catear.sqlite'));
@@ -28,9 +28,19 @@ final databaseProvider = FutureProvider<AppDatabase>((ref) async {
       error: error,
       stackTrace: stack,
     );
+    // Best-effort: don't leak the connection / background isolate on failure
+    // (this runs on every failed open and every retry).
+    if (db != null) {
+      try {
+        await db.close();
+      } catch (_) {
+        // Ignore — we're already failing.
+      }
+    }
     rethrow;
   }
 
-  ref.onDispose(db.close);
-  return db;
+  final openedDb = db;
+  ref.onDispose(openedDb.close);
+  return openedDb;
 });
