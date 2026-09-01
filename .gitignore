@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.user.toml
+
+# BMAD Method (framework internals + generated Claude Code skills - reinstall via `npx bmad-method install`)
+_bmad/
+.claude/skills/
+
+# dependencies (add app-specific ones here once the stack is chosen)
+node_modules/

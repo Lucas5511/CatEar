@@ -1,0 +1,78 @@
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created, ready for development
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
+
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when its first story starts (via build's sprint sync)
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates the next story after the previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; the status view surfaces open ones
+generated: 09-01-2026 12:00
+last_updated: 09-01-2026 12:30
+project: CatEar
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+development_status:
+  epic-1: backlog
+  1-1-abrir-o-app-numa-home-com-navegação-e-tema: backlog
+  1-2-catálogo-de-currículo-como-dado-com-invariante-de-fading-val: backlog
+  1-3-audioservice-com-reprodução-e-fakeaudioservice: backlog
+  1-3b-produção-do-conjunto-de-amostras-de-áudio-da-v1: backlog
+  1-4-exercício-de-reconhecimento-de-intervalo-em-contexto-musical: backlog
+  1-5-exercícios-de-reconhecimento-de-acordes-e-escalas: backlog
+  1-6-feedback-explicativo-em-erro: backlog
+  1-7-estrutura-de-sessão-de-10-15-minutos: backlog
+  1-8-geração-de-variações-anti-decoreba: backlog
+  1-9-nivelamento-por-reconhecimento: backlog
+  1-10-tela-de-settings: backlog
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-módulo-progressão-como-dono-único-de-estado-ingestão-de-even: backlog
+  2-2-medidor-de-esforço-monotônico: backlog
+  2-3-medidor-de-habilidade-e-par-sempre-junto: backlog
+  2-4-tela-de-resumo-de-sessão: backlog
+  2-5-recompensa-ponderada-por-esforço: backlog
+  2-6-skill-tree-visível-com-estados-de-nó: backlog
+  2-7-nó-capstone-de-audiação-placeholder: backlog
+  2-8-dificuldade-adaptativa-sem-paredes-com-rota-de-reforço: backlog
+  2-9-registro-da-baseline-do-dia-1: backlog
+  2-10-tela-de-comparação-de-progresso-vs-baseline: backlog
+  2-11-andaime-de-cor-para-consonância-dissonância-com-fading: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-spike-de-detecção-de-pitch-gate-de-risco: in-progress
+  3-2-audioservice-gravação-push-to-talk-e-evaluatepitch: backlog
+  3-3-produção-ativa-como-modalidade-em-exercícios-do-núcleo: backlog
+  3-4-nivelamento-com-porção-de-produção-vocal: backlog
+  3-5-módulo-de-resolução-tensão-alívio-com-voz-obrigatória: backlog
+  3-6-tratamento-de-microfone-não-concedido: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-módulo-telemetria-passivo-com-tabela-própria-e-flag: backlog
+  4-2-captura-de-sinais-de-calibração-a-partir-dos-eventos-de-domí: backlog
+  epic-4-retrospective: optional
