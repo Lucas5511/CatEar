@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-01-2026 12:00
-last_updated: 09-02-2026 15:30
+last_updated: 09-02-2026 12:35
 project: CatEar
 project_key: NOKEY
 tracking_system: file-system
@@ -47,7 +47,7 @@ development_status:
   1-8-geração-de-variações-anti-decoreba: backlog
   1-9-nivelamento-por-reconhecimento: backlog
   1-10-tela-de-settings: backlog
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
 
   epic-2: backlog
   2-1-módulo-progressão-como-dono-único-de-estado-ingestão-de-even: backlog
@@ -76,3 +76,52 @@ development_status:
   4-1-módulo-telemetria-passivo-com-tabela-própria-e-flag: backlog
   4-2-captura-de-sinais-de-calibração-a-partir-dos-eventos-de-domí: backlog
   epic-4-retrospective: optional
+action_items:
+  - id: "epic-1-retro-item-1-script-seção-de-setup-do-repo-pin-flutte"
+    epic: 1
+    action: "Script/seção de setup do repo: pin Flutter 3.47.x, componentes Android
+      SDK, nota flutter_test_config, setup de áudio para a Story 1.3"
+    owner: "dev"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-02.md"
+  - id: "epic-1-retro-item-2-rodar-bmad-testarch-ci-cobertura-no-ci-b"
+    epic: 1
+    action: "Rodar bmad-testarch-ci: cobertura no CI, burn-in do job e2e-android,
+      git diff --exit-code pós-regen"
+    owner: "Murat"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-02.md"
+  - id: "epic-1-retro-item-3-triar-deferred-work-md-tag-por-item-puxa"
+    epic: 1
+    action: "Triar deferred-work.md: tag por item (puxar-para-story / aceitar / precisa-decisão)"
+    owner: "John+Murat"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-02.md"
+  - id: "epic-1-retro-item-4-dod-de-story-se-o-frozen-block-divergiu"
+    epic: 1
+    action: "DoD de story: se o frozen block divergiu de um artefato de planejamento,
+      atualizar o artefato no mesmo PR"
+    owner: "processo"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-02.md"
+  - id: "epic-1-retro-item-5-geração-de-e2e-entra-no-dod-da-story-não"
+    epic: 1
+    action: "Geração de E2E entra no DoD da story, não em PR de follow-up"
+    owner: "processo"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-02.md"
+  - id: "epic-1-retro-item-6-aceitar-k-como-normal-para-stories-de-fu"
+    epic: 1
+    action: "Aceitar [K] como normal para stories de fundação/schema ou recalibrar
+      o alvo de tokens do bmad-build"
+    owner: "processo"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-02.md"
+  - id: "epic-1-retro-item-7-itens-p1-do-test-design-r4-check_module_"
+    epic: 1
+    action: "Itens P1 do test-design: R4 (check_module_boundaries), R7 (contraste
+      surface-raised + telas erro/boot), R10 (handler global de erro), TQ-6 (E2E com
+      databaseProvider real)"
+    owner: "dev"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-02.md"
