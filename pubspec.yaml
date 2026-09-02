@@ -47,6 +47,9 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
+  assets:
+    - assets/curriculum/catalog_v1.json
+
   fonts:
     - family: Fredoka
       fonts:
