@@ -65,28 +65,58 @@ _bmad-output/     # artefatos BMad (planejamento + implementação) — ver abai
 
 ---
 
-## Rodando o projeto
+## Setup de ambiente
 
-Requer **Flutter 3.47.x** no `PATH`.
+```bash
+bash tool/setup.sh          # verifica o toolchain e diz como corrigir cada gap
+bash tool/setup.sh --fix    # + aceita licenças e instala os componentes do Android SDK que faltam
+```
+
+O que é preciso (o script confere tudo):
+
+| Ferramenta | Versão | Notas |
+|---|---|---|
+| **Flutter** | **3.47.x** estável | Pin do Epic 1 (`AR-1`). Em CI: `subosito/flutter-action@v2` `flutter-version: 3.47.x`. |
+| **Dart** | vem com o Flutter (3.13.x) | — |
+| **JDK** | **17 ou mais recente** | Para builds Android. Sem JDK de sistema? Use o JBR do Android Studio: `export JAVA_HOME=/snap/android-studio/current/jbr`. Em CI: `actions/setup-java@v4` temurin 17. |
+| **Android SDK** | platform 36 + build-tools 36 (compile/target); platform 35 + system-image `android-35;google_apis_playstore;x86_64` (emulador) | `ANDROID_SDK_ROOT` (default `~/Android/Sdk`). O NDK baixa sozinho no 1º `flutter build apk`. |
+| **AVD** | qualquer API 35 | `flutter emulators --create --name pixel` — necessário só para os testes E2E. |
+
+**Shells não-interativos** (hooks, CI local, alguns editores) podem não carregar o `PATH` do seu `.zshrc`/`.bashrc`. Nesses casos, exporte explicitamente:
+```bash
+export PATH="$HOME/development/flutter/bin:$PATH"
+```
+
+## Rodando o projeto
 
 ```bash
 flutter pub get
-dart run build_runner build --delete-conflicting-outputs   # gera *.g.dart / *.drift.dart
-flutter test                                                # 141 testes
+dart run build_runner build --delete-conflicting-outputs   # gera *.g.dart / *.drift.dart (git-ignorados)
+flutter test                                                # ~145 testes unit/widget
 dart run tool/ci.sh                                          # todos os gates de CI, exit agregado
 ```
 
-`tool/ci.sh` roda, na ordem: `pub get` → `build_runner` → `drift_dev schema dump` → auditoria de contraste → `dart format --set-exit-if-changed` → `flutter analyze` → **fronteira de módulos** → **app id** → **currículo** (invariante de fading) → `flutter test`. O mesmo roda no GitHub Actions ([`.github/workflows/ci.yaml`](.github/workflows/ci.yaml)).
+`tool/ci.sh` roda, na ordem: `pub get` → `build_runner` → `drift_dev schema dump` → auditoria de contraste → `dart format --set-exit-if-changed` → `flutter analyze` → **fronteira de módulos** → **app id** → **currículo** (invariante de fading) → `flutter test`. O GitHub Actions ([`.github/workflows/ci.yaml`](.github/workflows/ci.yaml)) roda isso no job `gates`, mais `build-android` (`flutter build apk --debug`) e `e2e-android` (`integration_test` em emulador API-35) em paralelo.
 
-### App num emulador
+### App num emulador / device
 
-O projeto tem só targets **android/ios** (web/desktop são vetados). Precisa de um emulador Android rodando ou um dispositivo:
+O projeto tem só targets **android/ios** (web/desktop são vetados). Precisa de um emulador Android **rodando** ou um dispositivo:
 
 ```bash
-flutter emulators --launch <id>
+flutter emulators --launch pixel   # num terminal à parte, deixa vivo
 flutter run
-flutter test integration_test        # E2E, com o emulador ligado
+flutter test integration_test      # E2E — o `flutter test` normal NÃO roda isto
 ```
+
+Não deixe o emulador como processo-filho do comando de teste — suba separado; se ele morre no build do Gradle o teste falha com `device not found`. 1ª execução baixa NDK/build-tools (~5–7 min), depois ~15–30s.
+
+### Setup de áudio (a partir da Story 1.3)
+
+`record` e `just_audio` já estão no `pubspec` (pin do Epic 1) mas ainda não são usados. Quando a Story 1.3 (AudioService) entrar:
+
+- **`record`** (captura vocal, Epic 3) exige `RECORD_AUDIO` no `AndroidManifest.xml` e `NSMicrophoneUsageDescription` no `Info.plist` — **ainda não declarados**.
+- **`just_audio`** (reprodução) toca as amostras empacotadas em `assets/audio/` sem permissão extra (não há URL remota na v1).
+- Testes de Exercícios/Nivelamento/Progressão **nunca** dependem de hardware de áudio (`FakeAudioService`, `AR-7`) — o CI headless não toca som.
 
 ---
 
