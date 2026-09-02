@@ -130,10 +130,22 @@ Legenda de cobertura: **FULL** = comportamento asserido por teste automatizado q
 
 ---
 
-## Owners e prazos (a atribuir)
+## Owners e prazos
 
-| Ação | Risco | Esforço | Owner | Prazo |
-|---|---|---|---|---|
-| CI build nativo Android | R1 | ~30 min | _a definir_ | antes de fechar Epic 1 |
-| Harness de migração | R2 | ~1h | _a definir_ | antes da Story 1.8 |
-| `integration_test` no CI (emulador) | R3 | ~1h | _a definir_ | durante o Epic 1 |
+| Ação | Risco | Status | Evidência |
+|---|---|---|---|
+| CI build nativo Android (`build-android` job) | R1 | ✅ **feito** (branch `test/epic-1-quality-gate`) | `.github/workflows/ci.yaml`; `flutter build apk --debug` verificado local (APK gerado) |
+| Harness de migração (`test/migration_test.dart` + `SchemaVerifier`) | R2 | ✅ **feito** | 4 testes passando; guarda `schemaVersion` vs snapshots; pronto para estender na Story 1.8 |
+| `integration_test` no CI com emulador (`e2e-android` job) | R3 | 🟡 **job adicionado, não verificado** | `.github/workflows/ci.yaml` (`reactivecircus/android-emulator-runner`, API 35) — precisa do 1º run no GitHub |
+
+---
+
+## Atualização de gate — 2026-09-02 (pós branch `test/epic-1-quality-gate`)
+
+**PASS pendente do 1º CI verde.**
+
+- **R1** mitigado: job `build-android` + prova local. AC-1.1-a sai de PARTIAL para FULL assim que o job passar no GitHub.
+- **R2** mitigado: harness na suíte (`flutter test` agora 145 testes). IO-1.1-1 (path do banco) continua PARTIAL até o `e2e-android` rodar com `databaseProvider` real — recomendação TQ-6 (1 teste E2E com provider real no emulador) fecha isso.
+- **R3** endereçado mas **não comprovado** — o gate só vira PASS quando `build-android` **e** `e2e-android` fecharem verdes num PR.
+
+Enquanto os dois jobs novos não tiverem um run verde registrado: **CONCERNS → PASS-pending**. Nenhuma ação de código pendente; só falta a execução no CI real.
