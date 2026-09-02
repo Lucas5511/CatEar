@@ -32,6 +32,11 @@ dependencies:
 
   uuid: ^4.0.0
 
+  # Zone-scoped clock so reaction-time measurement is driven by fake_async /
+  # flutter_test's fake clock in tests (Epic 1: "fake_async nos testes com
+  # relógio"). Dart-team micro-package, already in the tree via fake_async.
+  clock: ^1.1.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
