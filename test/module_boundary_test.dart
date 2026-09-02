@@ -137,6 +137,61 @@ void main() {
     expect(r.stderr.toString(), contains('platform audio package'));
   });
 
+  test(
+    'lib/ file importing a module testing.dart barrel fails (Rule 5)',
+    () async {
+      write('lib/core/core.dart', 'library;\n');
+      write(
+        'lib/audio/testing.dart',
+        "library;\nexport 'testing/fake.dart';\n",
+      );
+      write('lib/audio/testing/fake.dart', 'class FakeAudioService {}\n');
+      write(
+        'lib/exercicios/data/player.dart',
+        "import 'package:catear/audio/testing.dart';\nvoid f() {}\n",
+      );
+
+      final r = await run();
+      expect(r.exitCode, isNot(0));
+      expect(r.stderr.toString(), contains('exercicios/data/player.dart'));
+      expect(r.stderr.toString(), contains('test-only surface'));
+    },
+  );
+
+  test(
+    'lib/ file reaching into a module testing/ dir fails (Rule 5)',
+    () async {
+      write('lib/core/core.dart', 'library;\n');
+      write('lib/audio/testing/fake.dart', 'class FakeAudioService {}\n');
+      write(
+        'lib/exercicios/data/player.dart',
+        "import '../../audio/testing/fake.dart';\nvoid f() {}\n",
+      );
+
+      final r = await run();
+      expect(r.exitCode, isNot(0));
+      expect(r.stderr.toString(), contains('exercicios/data/player.dart'));
+      expect(r.stderr.toString(), contains('test-only surface'));
+    },
+  );
+
+  test(
+    'a module referencing its own testing/ from lib/ still fails (Rule 5)',
+    () async {
+      write('lib/core/core.dart', 'library;\n');
+      write('lib/audio/testing/fake.dart', 'class FakeAudioService {}\n');
+      write(
+        'lib/audio/data/leak.dart',
+        "import '../testing/fake.dart';\nvoid f() {}\n",
+      );
+
+      final r = await run();
+      expect(r.exitCode, isNot(0));
+      expect(r.stderr.toString(), contains('audio/data/leak.dart'));
+      expect(r.stderr.toString(), contains('test-only surface'));
+    },
+  );
+
   test('empty lib/ fails', () async {
     write('lib/.gitkeep', '');
     final r = await run();

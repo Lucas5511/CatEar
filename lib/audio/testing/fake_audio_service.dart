@@ -2,13 +2,16 @@
 /// platform channel — injected via `audioServiceProvider.overrideWithValue`.
 library;
 
+import 'dart:async';
+
 import '../domain/audio_service.dart';
 
 /// Records every call and simulates playback without producing sound.
 ///
-/// Inspect [playedRefs] (in order), [stopCount] and [disposed]. Configure
-/// [unplayableRefs] to make specific tokens fail with [SamplePlaybackFailed],
-/// and [playLatency] to delay [playSample] completion.
+/// Inspect [playedRefs] (in order), [interruptedRefs], [stopCount],
+/// [disposeCount] / [disposed] and [isPlaying]. Configure [unplayableRefs] to
+/// make specific tokens fail with [SamplePlaybackFailed], and [playLatency] to
+/// give playback a non-zero duration so interruption is observable.
 class FakeAudioService implements AudioService {
   FakeAudioService({
     Set<String>? unplayableRefs,
@@ -19,18 +22,35 @@ class FakeAudioService implements AudioService {
   /// recorded here.
   final List<String> playedRefs = <String>[];
 
+  /// Refs whose playback was cut short — by a following [playSample] or by
+  /// [stop] — before its [playLatency] elapsed. Empty when [playLatency] is
+  /// zero (playback completes synchronously, nothing to interrupt).
+  final List<String> interruptedRefs = <String>[];
+
   /// Number of [stop] calls.
   int stopCount = 0;
 
-  /// Whether [dispose] has been called.
-  bool disposed = false;
+  /// Number of [dispose] calls. `1` after a normal provider teardown.
+  int disposeCount = 0;
+
+  /// Whether [dispose] has been called at least once.
+  bool get disposed => disposeCount > 0;
 
   /// Tokens that [playSample] must reject with [SamplePlaybackFailed].
   /// Mutable so a test can add/remove entries after construction.
   final Set<String> unplayableRefs;
 
-  /// Awaited before [playSample] completes. Default [Duration.zero].
+  /// How long a [playSample] call stays "playing" before completing. Default
+  /// [Duration.zero] — playback completes on the next microtask and cannot be
+  /// interrupted. A non-zero value lets a test observe interruption.
   Duration playLatency;
+
+  Completer<void>? _inFlight;
+  String? _playingRef;
+
+  /// Whether a [playSample] call is currently mid-playback (only possible with
+  /// a non-zero [playLatency]).
+  bool get isPlaying => _playingRef != null;
 
   @override
   Future<void> playSample(String ref) async {
@@ -38,21 +58,46 @@ class FakeAudioService implements AudioService {
     if (unplayableRefs.contains(ref)) {
       throw AudioError.samplePlaybackFailed(ref, 'ref marked unplayable');
     }
+    _interruptCurrent();
     playedRefs.add(ref);
-    if (playLatency > Duration.zero) {
-      await Future<void>.delayed(playLatency);
-    }
+    if (playLatency <= Duration.zero) return;
+
+    final completer = Completer<void>();
+    _inFlight = completer;
+    _playingRef = ref;
+    Future<void>.delayed(playLatency).then((_) {
+      if (identical(_inFlight, completer)) {
+        _inFlight = null;
+        _playingRef = null;
+        completer.complete();
+      }
+    });
+    return completer.future;
   }
 
   @override
   Future<void> stop() async {
     _ensureAlive();
     stopCount++;
+    _interruptCurrent();
   }
 
   @override
   Future<void> dispose() async {
-    disposed = true;
+    disposeCount++;
+    _interruptCurrent();
+  }
+
+  /// Ends any in-flight playback the way `just_audio` does — the pending
+  /// [playSample] future completes (it does not throw) and the ref is recorded
+  /// in [interruptedRefs].
+  void _interruptCurrent() {
+    final completer = _inFlight;
+    if (completer == null) return;
+    interruptedRefs.add(_playingRef!);
+    _inFlight = null;
+    _playingRef = null;
+    completer.complete();
   }
 
   void _ensureAlive() {

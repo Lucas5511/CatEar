@@ -49,7 +49,7 @@ class _JustAudioService implements AudioService {
       // asset — best-effort reset before we hand back a domain error.
       try {
         await _player.stop();
-      } catch (_) {
+      } on Exception catch (_) {
         // Already failing; nothing useful to do.
       }
       throw AudioError.samplePlaybackFailed(ref, e.toString());
@@ -60,10 +60,12 @@ class _JustAudioService implements AudioService {
   Future<void> stop() async {
     _ensureAlive();
     // Best-effort: a raw PlatformException from the plugin must not cross the
-    // module boundary, and silencing is idempotent / no-op when idle.
+    // module boundary, and silencing is idempotent / no-op when idle. Only
+    // package/platform exceptions are swallowed — a programming error (Error)
+    // still surfaces, exactly as in `playSample`.
     try {
       await _player.stop();
-    } catch (_) {
+    } on Exception catch (_) {
       // Ignore — silencing failed, but there is no domain error for `stop`.
     }
   }
@@ -76,7 +78,7 @@ class _JustAudioService implements AudioService {
     // `ref.onDispose` during container teardown.
     try {
       await _player.dispose();
-    } catch (_) {
+    } on Exception catch (_) {
       // Best-effort resource release.
     }
   }

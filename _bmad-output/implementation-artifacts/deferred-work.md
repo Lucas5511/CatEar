@@ -70,8 +70,8 @@
 ## Deferred from: implementation of spec-1-3 (2026-09-02)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-3-audioservice-com-reproducao-e-fakeaudioservice.md`
-  summary: Teste de integração do `_JustAudioService` real contra `just_audio` — precisa de plataforma (device/emulador) + os assets `.wav` da Story 1.3b, não roda sob `flutter test`. Cobrir `playSample` (`stop → setAsset → play → stop`), embrulho de `PlayerException`/`PlatformException` em `SamplePlaybackFailed`, reset best-effort do player quando `play()` falha após `setAsset`, `stop` best-effort quando ocioso, `dispose` liberando o `AudioPlayer` e `StateError` pós-dispose. Nenhuma instância de `_JustAudioService` é construída no suite unitário (a spec proíbe exercitá-lo sob `flutter test`); a lógica de interface é exercida pelo `FakeAudioService` e o wiring do provider por um spy.
-  evidence: `lib/audio/data/audio_service_impl.dart` — `_JustAudioService` sem teste unitário (Design Notes da spec: `AudioPlayer` é classe concreta sem interface); `test/audio_service_test.dart` cobre o `FakeAudioService`, o contrato de valor de `SamplePlaybackFailed` e o wiring/dispose do provider via `_SpyAudioService`.
+  summary: Teste de integração do `_JustAudioService` real contra `just_audio` — precisa de plataforma (device/emulador) + os assets `.wav` da Story 1.3b, não roda sob `flutter test`. Cobrir `playSample` (`stop → setAsset → play → stop`), embrulho de `PlayerException`/`PlatformException` em `SamplePlaybackFailed`, reset best-effort do player quando `play()` falha após `setAsset`, `stop` best-effort quando ocioso, `dispose` liberando o `AudioPlayer` e `StateError` pós-dispose. Nenhuma instância de `_JustAudioService` é construída no suite unitário (a spec proíbe exercitá-lo sob `flutter test`); a lógica de interface é exercida pelo `FakeAudioService` e o wiring do provider por uma instância de `FakeAudioService` sob override. **Disposição (TEA review, F2): entra no DoD da 1.3b, mesmo PR.**
+  evidence: `lib/audio/data/audio_service_impl.dart` — `_JustAudioService` sem teste unitário (Design Notes da spec: `AudioPlayer` é classe concreta sem interface); `test/audio_service_test.dart` cobre o `FakeAudioService`, o contrato de valor de `SamplePlaybackFailed` e o wiring/dispose do provider.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-3-audioservice-com-reproducao-e-fakeaudioservice.md`
   summary: Orquestração de fraseado/sequência de amostras (tocar o intervalo/acorde/escala dentro de uma melodia ou progressão curta, replay, encadeamento) é lógica de apresentação das Stories 1.4+. `AudioService.playSample` toca uma única amostra pré-renderizada por `ref`; compor a frase e o contexto musical é do consumidor.
   evidence: `lib/audio/domain/audio_service.dart` — interface só com `playSample(String ref)` single-shot, sem sequência/`Stream`.
@@ -81,18 +81,38 @@
 
 ## Deferred from: step-04 review de spec-1-3 (2026-09-02, review_loop 1)
 
+## TEA review de story 1.3 (Murat, 2026-09-02) — triagem dos itens acima
+
+Findings F1–F8 do review. F1, F3, F4, F5, F6, F8 **resolvidos neste PR**; F2 e F7
+retêm como itens com dono, não follow-up genérico.
+
+- F1 — RESOLVIDO: `test/audio_service_test.dart` do teste `playLatency` migrado para
+  `fakeAsync` (dep `fake_async` em `dev_dependencies`); zero espera de relógio real.
+- F3 — RESOLVIDO: `FakeAudioService` agora modela interrupção (`isPlaying`,
+  `interruptedRefs`) e um `playSample`/`stop` seguinte corta o anterior, como o
+  `just_audio` real. Cobre o que as Stories 1.4+ vão assertar.
+- F4 — RESOLVIDO: `audioAssetKeyFor` lança `ArgumentError` (não mais só `assert`) —
+  guarda real de path-traversal válida em build release.
+- F5 — RESOLVIDO: `FakeAudioService` ganhou `disposeCount`; `_SpyAudioService`
+  duplicado removido do teste de wiring do provider.
+- F6 — RESOLVIDO: `_JustAudioService.stop`/`dispose`/reset usam `on Exception`
+  (não `catch (_)`); erro de programação sobe, alinhado com `playSample`.
+- F8 — RESOLVIDO: Regra 5 no `check_module_boundaries.dart` — nenhum arquivo de
+  `lib/` referencia `lib/<m>/testing.dart` nem `lib/<m>/testing/**`; 3 casos de
+  teste em `test/module_boundary_test.dart`.
+
+- F2 — puxar-para-story 1.3b (DoD): teste de integração do `_JustAudioService`
+  real contra `just_audio` + assets `.wav`. Já descrito no bloco "implementation of
+  spec-1-3" acima; a mudança de disposição é que **entra no DoD da 1.3b, mesmo PR**
+  (retro action item #5), não como PR de follow-up sem dono. owner: dev da 1.3b.
+- F7 — RESOLVIDO PARCIAL / finalizar na 1.3b: `test/audio_service_test.dart` agora
+  itera todos os `audioSampleRefs` do `catalog_v1.json` real e valida a chave de
+  cada um. Falta (1.3b): assertar que o arquivo `.wav` existe de fato para cada
+  chave. owner: dev da 1.3b.
+
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-3-audioservice-com-reproducao-e-fakeaudioservice.md`
-  summary: `_JustAudioService.playSample`/`stop` não serializam chamadas concorrentes. O contrato "interrompe qualquer amostra ainda tocando" vale para chamadas sequenciais aguardadas (o `stop()` de entrada cobre), mas duas chamadas concorrentes correm `stop→setAsset→play→stop` no mesmo `AudioPlayer` com ordem indefinida. Endurecer (serializar via fila de operação, ou documentar a premissa de chamador único) quando existir um consumidor real (Stories 1.4+).
+  summary: (F3-adjacente, ainda aberto) `_JustAudioService.playSample`/`stop` não serializam chamadas concorrentes. O contrato "interrompe qualquer amostra ainda tocando" vale para chamadas sequenciais aguardadas (o `stop()` de entrada cobre), mas duas chamadas concorrentes correm `stop→setAsset→play→stop` no mesmo `AudioPlayer` com ordem indefinida. Endurecer (serializar via fila de operação, ou documentar a premissa de chamador único) quando existir um consumidor real (Stories 1.4+). O `FakeAudioService` já serializa (última chamada vence), então o contrato de consumidor está testável; a lacuna é só na impl real. owner: dev da 1.4.
   evidence: `lib/audio/data/audio_service_impl.dart` — `playSample` sem guarda de concorrência; `_player` compartilhado.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-3-audioservice-com-reproducao-e-fakeaudioservice.md`
-  summary: `FakeAudioService` não modela interrupção — `stopCount` é o único sinal e uma chamada de `playSample` atrasada por `playLatency` não é cancelada por `stop()` nem por um `playSample` seguinte. As Stories 1.4+ vão querer assertar "o segundo play interrompeu o primeiro"; o fake precisará de `isPlaying`/`interruptedRefs`. Adicionar também `disposeCount` (mantendo `disposed` como getter) elimina o `_SpyAudioService` duplicado no teste de wiring.
-  evidence: `lib/audio/testing/fake_audio_service.dart` — só `playedRefs`/`stopCount`/`disposed`.
-- source_spec: `_bmad-output/implementation-artifacts/spec-1-3-audioservice-com-reproducao-e-fakeaudioservice.md`
-  summary: A promessa do doc-comment de `lib/audio/testing.dart` ("Never imported by production code") não é forçada — a Regra 4 do `check_module_boundaries.dart` cobre `just_audio`/`record`, mas nada impede um arquivo de `lib/` importar `lib/audio/testing*`. Considerar uma Regra 5 (`**/testing*` alcançável só de `test/`) ou abrandar o comentário.
-  evidence: `tool/check_module_boundaries.dart` — Regras 1–4 não mencionam `testing/`.
-- source_spec: `_bmad-output/implementation-artifacts/spec-1-3-audioservice-com-reproducao-e-fakeaudioservice.md`
-  summary: `_JustAudioService` não configura `AudioSession`/categoria de sessão de áudio do `just_audio`. No iOS a reprodução costuma exigir a sessão configurada antes de `play()` ou fica silenciosa / mistura errado. Configurar (ou registrar a decisão) quando a Story 1.4 rodar o app.
+  summary: `_JustAudioService` não configura `AudioSession`/categoria de sessão de áudio do `just_audio`. No iOS a reprodução costuma exigir a sessão configurada antes de `play()` ou fica silenciosa / mistura errado. Configurar (ou registrar a decisão) quando a Story 1.4 rodar o app. owner: dev da 1.4.
   evidence: `lib/audio/data/audio_service_impl.dart` — só `AudioPlayer()`, sem `AudioSession.instance.configure(...)`.
-- source_spec: `_bmad-output/implementation-artifacts/spec-1-3-audioservice-com-reproducao-e-fakeaudioservice.md`
-  summary: Nenhum teste liga `audioAssetKeyFor` aos tokens reais de `audioSampleRef` do `assets/curriculum/catalog_v1.json`. Um teste iterando os 14 tokens `sax_*` e assertando que cada um mapeia para uma chave `assets/audio/<token>.wav` bem-formada pegaria drift de token/formato antes da Story 1.3b.
-  evidence: `test/audio_service_test.dart` — `audioAssetKeyFor` testado só com literais `sax_db4`/`sax_c4`.

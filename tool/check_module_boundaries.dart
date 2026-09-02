@@ -15,6 +15,10 @@
 //     `record_platform_interface`, …) — the platform audio packages stay
 //     behind the AudioService interface (AR-6). Checked on the raw import URI,
 //     before target resolution (which returns null for external packages).
+//  5. No file under lib/ may import/export a module's test-only surface
+//     (lib/<m>/testing.dart or lib/<m>/testing/**) — the fakes/spies there are
+//     reachable only from test/. Production code depends on the interface plus
+//     its provider, never on a test double.
 //
 // Exit code is non-zero on any violation, naming the offending file and line.
 
@@ -130,6 +134,27 @@ void main(List<String> args) {
       // Rule 1: no cross-module data/ or presentation/ reach-in.
       final targetModule = _moduleOf(target);
       if (targetModule == null) continue;
+
+      // Rule 5: test-only surface (lib/<m>/testing.dart, lib/<m>/testing/**)
+      // is reachable only from test/ — never from another lib/ file. The
+      // testing barrel re-exporting its own testing/ dir is the one allowed
+      // reference.
+      final fromTestingSurface =
+          owningModule != null &&
+          (libRelative == '$owningModule/testing.dart' ||
+              libRelative.startsWith('$owningModule/testing/'));
+      final referencesTestingSurface =
+          !fromTestingSurface &&
+          (target == '$targetModule/testing.dart' ||
+              target.startsWith('$targetModule/testing/'));
+      if (referencesTestingSurface) {
+        violations.add(
+          '$libRelative:$line: imports test-only surface "$uri" '
+          '(lib/$targetModule/testing…) from lib/ — test doubles belong to '
+          'test/ only',
+        );
+      }
+
       final isPrivateLayer =
           target.startsWith('$targetModule/data/') ||
           target.startsWith('$targetModule/presentation/');

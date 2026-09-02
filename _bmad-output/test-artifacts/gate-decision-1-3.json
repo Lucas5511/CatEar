@@ -1,0 +1,21 @@
+{
+  "schema_version": "0.1.0",
+  "evaluated_at": "2026-09-02T18:26:45Z",
+  "repo": "Perfect Ear",
+  "target": { "type": "story", "id": "1.3", "label": "AudioService com reprodução e FakeAudioService" },
+  "collection_status": "COLLECTED",
+  "gate_basis": "priority_thresholds",
+  "gate_status": "PASS",
+  "rationale": "P0 100% (3/3: barrel/AR-6, seam de teste, gate Regra 4), P1 100% FULL (5/5), cobertura geral 81% (mín. 80%). As porções não-FULL são P2/P3 e não-bloqueantes (wiring real do onDispose, ci.sh sem teste de orquestração herdado da 1.2, presentation/ só-.gitkeep). A execução da impl real _JustAudioService está fora do escopo testável da 1.3 por decisão congelada da spec e foi movida para o DoD da 1.3b. Oráculo formal de alta confiança; sem overlay de rebaixamento.",
+  "p0_status": "MET",
+  "p1_status": "MET",
+  "overall_status": "MET",
+  "critical_open": 0,
+  "review_findings_resolved": ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8"],
+  "links": {
+    "trace_report_path": "_bmad-output/test-artifacts/traceability/traceability-matrix-1-3.md",
+    "trace_report_url": "",
+    "artifact_url": "",
+    "journey_evidence_url": ""
+  }
+}

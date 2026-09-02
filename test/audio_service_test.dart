@@ -1,11 +1,14 @@
 import 'package:catear/audio/audio.dart';
 import 'package:catear/audio/testing.dart';
+import 'package:catear/curriculo/curriculo.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Covers every "fake" row of the spec's I/O & edge-case matrix, the pure
-/// `audioAssetKeyFor` map, the `SamplePlaybackFailed` value contract, and the
-/// `audioServiceProvider` wiring (override + dispose propagation).
+/// `audioAssetKeyFor` map (including against the real catalog tokens), the
+/// `SamplePlaybackFailed` value contract, and the `audioServiceProvider` wiring
+/// (override + dispose propagation).
 ///
 /// The real `_JustAudioService` is never constructed here — the spec forbids
 /// exercising it against `just_audio` under `flutter test`; a post-1.3b
@@ -22,6 +25,7 @@ void main() {
       await fake.playSample('sax_d4');
 
       expect(fake.playedRefs, ['sax_c4', 'sax_c4', 'sax_d4']);
+      expect(fake.interruptedRefs, isEmpty, reason: 'zero-latency playback');
     });
 
     test('stop() while idle just increments stopCount and completes', () async {
@@ -33,18 +37,62 @@ void main() {
       expect(fake.stopCount, 2);
     });
 
-    test('playLatency is awaited before playSample completes', () async {
-      final fake = FakeAudioService(playLatency: const Duration(seconds: 5));
+    test('playLatency keeps playSample pending until it elapses', () {
+      fakeAsync((async) {
+        final fake = FakeAudioService(playLatency: const Duration(seconds: 5));
 
-      var completed = false;
-      final future = fake.playSample('sax_c4').then((_) => completed = true);
+        var completed = false;
+        fake.playSample('sax_c4').then((_) => completed = true);
 
-      await Future<void>.delayed(Duration.zero);
-      expect(completed, isFalse, reason: 'still within playLatency');
+        async.elapse(const Duration(seconds: 4));
+        expect(fake.isPlaying, isTrue);
+        expect(completed, isFalse, reason: 'still within playLatency');
 
-      fake.playLatency = Duration.zero; // does not affect the in-flight call
-      await future;
-      expect(completed, isTrue);
+        async.elapse(const Duration(seconds: 1));
+        expect(completed, isTrue);
+        expect(fake.isPlaying, isFalse);
+        expect(fake.interruptedRefs, isEmpty, reason: 'it finished on its own');
+      });
+    });
+
+    test('a following playSample interrupts the one still playing', () {
+      fakeAsync((async) {
+        final fake = FakeAudioService(playLatency: const Duration(seconds: 5));
+
+        var firstCompleted = false;
+        fake.playSample('sax_c4').then((_) => firstCompleted = true);
+        async.elapse(const Duration(seconds: 1));
+
+        fake.playSample('sax_d4'); // cuts the first one short
+        async.flushMicrotasks();
+
+        expect(
+          firstCompleted,
+          isTrue,
+          reason: 'interrupted call still resolves',
+        );
+        expect(fake.interruptedRefs, ['sax_c4']);
+        expect(fake.playedRefs, ['sax_c4', 'sax_d4']);
+        expect(fake.isPlaying, isTrue, reason: 'the second sample is playing');
+      });
+    });
+
+    test('stop() interrupts the sample still playing', () {
+      fakeAsync((async) {
+        final fake = FakeAudioService(playLatency: const Duration(seconds: 5));
+
+        var completed = false;
+        fake.playSample('sax_c4').then((_) => completed = true);
+        async.elapse(const Duration(seconds: 1));
+
+        fake.stop();
+        async.flushMicrotasks();
+
+        expect(completed, isTrue);
+        expect(fake.stopCount, 1);
+        expect(fake.interruptedRefs, ['sax_c4']);
+        expect(fake.isPlaying, isFalse);
+      });
     });
 
     test(
@@ -85,6 +133,7 @@ void main() {
       await fake.dispose();
 
       expect(fake.disposed, isTrue);
+      expect(fake.disposeCount, 1);
       await expectLater(fake.playSample('sax_c4'), throwsA(isA<StateError>()));
       await expectLater(fake.stop(), throwsA(isA<StateError>()));
       expect(fake.playedRefs, isEmpty);
@@ -97,11 +146,42 @@ void main() {
       expect(audioAssetKeyFor('sax_c4'), 'assets/audio/sax_c4.wav');
     });
 
-    test('asserts on a token outside ^[a-z0-9_]+\$', () {
-      expect(() => audioAssetKeyFor('sax c4'), throwsA(isA<AssertionError>()));
-      expect(() => audioAssetKeyFor('../x'), throwsA(isA<AssertionError>()));
-      expect(() => audioAssetKeyFor('SAX_C4'), throwsA(isA<AssertionError>()));
+    test('throws ArgumentError on a token outside ^[a-z0-9_]+\$', () {
+      expect(() => audioAssetKeyFor('sax c4'), throwsA(isA<ArgumentError>()));
+      expect(() => audioAssetKeyFor('../x'), throwsA(isA<ArgumentError>()));
+      expect(() => audioAssetKeyFor('SAX_C4'), throwsA(isA<ArgumentError>()));
+      expect(() => audioAssetKeyFor(''), throwsA(isA<ArgumentError>()));
     });
+
+    test(
+      'every audioSampleRef in the real catalog maps to a well-formed key',
+      () async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+        final curriculum = await container
+            .read(curriculoRepositoryProvider)
+            .load();
+
+        final refs = {
+          for (final stage in curriculum.stages)
+            for (final exercise in stage.exercises) ...exercise.audioSampleRefs,
+        };
+        expect(
+          refs,
+          isNotEmpty,
+          reason: 'the catalog references audio samples',
+        );
+
+        for (final ref in refs) {
+          expect(
+            audioAssetKeyFor(ref),
+            matches(r'^assets/audio/[a-z0-9_]+\.wav$'),
+            reason: 'catalog ref "$ref" must produce a valid bundle key',
+          );
+          expect(audioAssetKeyFor(ref), 'assets/audio/$ref.wav');
+        }
+      },
+    );
   });
 
   group('SamplePlaybackFailed value contract', () {
@@ -121,19 +201,18 @@ void main() {
   });
 
   group('audioServiceProvider', () {
-    ProviderContainer containerWithSpy(_SpyAudioService spy) =>
-        ProviderContainer(
-          overrides: [
-            audioServiceProvider.overrideWith((ref) {
-              ref.onDispose(spy.dispose);
-              return spy;
-            }),
-          ],
-        );
+    ProviderContainer containerWith(FakeAudioService fake) => ProviderContainer(
+      overrides: [
+        audioServiceProvider.overrideWith((ref) {
+          ref.onDispose(fake.dispose);
+          return fake;
+        }),
+      ],
+    );
 
     test('exposes an AudioService', () {
-      final spy = _SpyAudioService();
-      final container = containerWithSpy(spy);
+      final fake = FakeAudioService();
+      final container = containerWith(fake);
       addTearDown(container.dispose);
 
       expect(container.read(audioServiceProvider), isA<AudioService>());
@@ -141,8 +220,10 @@ void main() {
 
     test('container.dispose() calls the service dispose exactly once, and '
         'a disposed service rejects further use', () async {
-      final spy = _SpyAudioService();
-      final container = containerWithSpy(spy);
+      final fake = FakeAudioService();
+      final container = containerWith(fake);
+      // Hold a subscription so the auto-dispose provider is not torn down
+      // before we dispose the container ourselves.
       final sub = container.listen(
         audioServiceProvider,
         (_, _) {},
@@ -152,7 +233,7 @@ void main() {
 
       container.dispose();
 
-      expect(spy.disposeCount, 1);
+      expect(fake.disposeCount, 1);
       await expectLater(
         service.playSample('sax_c4'),
         throwsA(isA<StateError>()),
@@ -179,29 +260,4 @@ void main() {
       },
     );
   });
-}
-
-/// Instrumented [AudioService] — no `just_audio`, no platform. Mirrors the
-/// post-dispose `StateError` contract so provider teardown can be asserted.
-class _SpyAudioService implements AudioService {
-  int disposeCount = 0;
-  bool _disposed = false;
-  final List<String> playedRefs = <String>[];
-
-  @override
-  Future<void> dispose() async {
-    disposeCount++;
-    _disposed = true;
-  }
-
-  @override
-  Future<void> playSample(String ref) async {
-    if (_disposed) throw StateError('used after dispose()');
-    playedRefs.add(ref);
-  }
-
-  @override
-  Future<void> stop() async {
-    if (_disposed) throw StateError('used after dispose()');
-  }
 }
