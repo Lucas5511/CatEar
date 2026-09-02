@@ -191,6 +191,8 @@ So that os exercícios tenham áudio para tocar.
 - Cada amostra é de timbre de instrumento real (gravada ou renderizada de biblioteca de samples licenciada), em contexto musical curto — nunca nota isolada sintetizada (FR-2, NFR-1).
 - Formato, taxa de amostragem e loudness normalizados de forma consistente entre amostras. [ASSUMPTION] parâmetros exatos definidos aqui.
 - A origem/licença de cada amostra é rastreável (nota de licenciamento no repo).
+- Um teste de integração exercita o `_JustAudioService` real contra `just_audio` com os assets desta story: `playSample` de uma amostra válida completa; uma amostra ausente/corrompida sai como `SamplePlaybackFailed` (nunca `PlayerException`/`PlatformException` cru); `dispose` libera o player. *(TEA review da Story 1.3, F2 — entra no DoD desta story, não em PR de follow-up.)*
+- Um teste assere que existe um arquivo de amostra para **cada** chave produzida por `audioAssetKeyFor` sobre os `audioSampleRefs` do catálogo v1. *(TEA review da Story 1.3, F7.)*
 - **Depende de:** Story 1.2 (o catálogo define quais refs existem).
 
 ### Story 1.4: Exercício de reconhecimento de intervalo em contexto musical

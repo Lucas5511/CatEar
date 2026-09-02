@@ -1,0 +1,111 @@
+{
+  "schema_version": "0.2.0",
+  "snapshot_at": "2026-09-02T18:26:45Z",
+  "repo": "Perfect Ear",
+  "collection_mode": "contract_static",
+  "collection_status": "COLLECTED",
+  "inventory_basis": "acceptance_criteria",
+  "gate_basis": "priority_thresholds",
+  "source_sha": "b699a5ed7018b0a1f5c0b1ad5266f7c3f26e2a9e",
+  "source_sha_note": "HEAD é o commit da Story 1.3; working tree contém as correções F1-F8 do TEA review (não commitadas)",
+  "target": { "type": "story", "id": "1.3", "label": "AudioService com reprodução e FakeAudioService" },
+  "decision_mode": "deterministic",
+  "evaluator": "Murat (TEA)",
+  "confidence": "high",
+  "oracle": {
+    "resolution_mode": "formal_requirements",
+    "confidence": "high",
+    "sources": [
+      "spec-1-3 (frozen Acceptance Criteria + I/O & edge-case matrix + Boundaries)",
+      "epics.md § Story 1.3"
+    ],
+    "external_pointer_status": "not_used",
+    "synthetic": false
+  },
+  "coverage": {
+    "inventory": { "covered": 13, "total": 16, "pct": 81 },
+    "priority_breakdown": {
+      "P0": { "total": 3, "covered": 3, "pct": 100 },
+      "P1": { "total": 5, "covered": 5, "pct": 100 },
+      "P2": { "total": 6, "covered": 4, "pct": 67 },
+      "P3": { "total": 2, "covered": 1, "pct": 50 }
+    },
+    "by_level": {
+      "e2e": { "tests": 0, "criteria_covered": 0 },
+      "api": { "tests": 0, "criteria_covered": 0 },
+      "component": { "tests": 0, "criteria_covered": 0 },
+      "unit": { "tests": 23, "criteria_covered": 16 },
+      "live": { "tests": 0, "criteria_covered": 0 },
+      "other": { "tests": 0, "criteria_covered": 0 }
+    }
+  },
+  "tests": { "files": 2, "cases": 23, "skipped_cases": 0, "fixme_cases": 0, "pending_cases": 0 },
+  "risk_summary": { "critical_open": 0, "high_open": 0, "medium_open": 2, "low_open": 2 },
+  "heuristics": {
+    "endpoint_gaps": 0,
+    "auth_negative_path_status": "not_applicable",
+    "error_path_status": "present",
+    "ui_journey_status": "not_applicable",
+    "ui_state_status": "not_applicable"
+  },
+  "live_evidence": {
+    "present": false,
+    "results_file": "",
+    "freshness": "not_present",
+    "recorded_source_sha": "",
+    "current_source_sha": "b699a5ed7018b0a1f5c0b1ad5266f7c3f26e2a9e",
+    "producer": "",
+    "counted": 0,
+    "stale": 0,
+    "unverifiable": 0,
+    "failed": 0,
+    "contradicted": 0,
+    "blocked": 0,
+    "skipped": 0,
+    "unmatched": 0,
+    "invalid": 0,
+    "requirements_live_only": 0
+  },
+  "gate_status": "PASS",
+  "gate_criteria": {
+    "p0_coverage_required": "100%",
+    "p0_coverage_actual": "100%",
+    "p0_status": "MET",
+    "p1_coverage_target": "90%",
+    "p1_coverage_minimum": "80%",
+    "p1_coverage_actual": "100%",
+    "p1_status": "MET",
+    "overall_coverage_minimum": "80%",
+    "overall_coverage_actual": "81%",
+    "overall_status": "MET"
+  },
+  "blockers": [],
+  "recommendations": [
+    {
+      "priority": "MEDIUM",
+      "action": "Cobrir o wiring real de ref.onDispose e a tradução de exceção do _JustAudioService no teste de integração da 1.3b (já no DoD)",
+      "requirements": ["1.3-AC-02", "1.3-AC-12"]
+    },
+    {
+      "priority": "MEDIUM",
+      "action": "Teste de existência de arquivo .wav por chave de audioAssetKeyFor sobre o catálogo v1 (1.3b DoD)",
+      "requirements": ["1.3-AC-10"]
+    },
+    {
+      "priority": "LOW",
+      "action": "Guarda de superfície do barrel lib/audio/audio.dart espelhando curriculum_catalog_test.dart",
+      "requirements": ["1.3-AC-01"]
+    },
+    {
+      "priority": "LOW",
+      "action": "Endurecer serialização de concorrência no _JustAudioService na Story 1.4",
+      "requirements": ["1.3-AC-15"]
+    }
+  ],
+  "links": {
+    "trace_report_path": "_bmad-output/test-artifacts/traceability/traceability-matrix-1-3.md",
+    "trace_report_url": "",
+    "artifact_url": "",
+    "journey_evidence_url": ""
+  }
+}

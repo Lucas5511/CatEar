@@ -43,12 +43,17 @@ dev_dependencies:
   drift_dev: 2.34.3
   analyzer: ^13.0.0
   flutter_lints: ^6.0.0
+  # Virtual clock for time-dependent tests (no wall-clock waits).
+  fake_async: ^1.3.3
 
 flutter:
   uses-material-design: true
 
   assets:
     - assets/curriculum/catalog_v1.json
+    # Pre-rendered audio samples. Real .wav files land in Story 1.3b; the
+    # directory is registered now so the AudioService contract is wired.
+    - assets/audio/
 
   fonts:
     - family: Fredoka

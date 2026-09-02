@@ -81,6 +81,117 @@ void main() {
     expect(r.stderr.toString(), contains('database internals'));
   });
 
+  test('just_audio / record imports inside lib/audio/ pass (Rule 4)', () async {
+    write('lib/core/core.dart', 'library;\n');
+    write(
+      'lib/audio/data/audio_service_impl.dart',
+      "import 'package:just_audio/just_audio.dart';\nvoid f() {}\n",
+    );
+    write(
+      'lib/audio/data/voice_capture.dart',
+      "import 'package:record/record.dart';\nvoid g() {}\n",
+    );
+
+    final r = await run();
+    expect(r.exitCode, 0, reason: '${r.stdout}${r.stderr}');
+  });
+
+  test('just_audio import outside lib/audio/ fails (Rule 4)', () async {
+    write('lib/core/core.dart', 'library;\n');
+    write(
+      'lib/exercicios/data/player.dart',
+      "import 'package:just_audio/just_audio.dart';\nvoid f() {}\n",
+    );
+
+    final r = await run();
+    expect(r.exitCode, isNot(0));
+    expect(r.stderr.toString(), contains('exercicios/data/player.dart'));
+    expect(r.stderr.toString(), contains('platform audio package'));
+  });
+
+  test('sibling package (just_audio_background) outside lib/audio/ fails '
+      '(Rule 4)', () async {
+    write('lib/core/core.dart', 'library;\n');
+    write(
+      'lib/progressao/data/bg.dart',
+      "import 'package:just_audio_background/just_audio_background.dart';\n"
+          'void f() {}\n',
+    );
+
+    final r = await run();
+    expect(r.exitCode, isNot(0));
+    expect(r.stderr.toString(), contains('progressao/data/bg.dart'));
+    expect(r.stderr.toString(), contains('platform audio package'));
+  });
+
+  test('record export outside lib/audio/ fails (Rule 4)', () async {
+    write('lib/core/core.dart', 'library;\n');
+    write(
+      'lib/nivelamento/data/capture.dart',
+      "export 'package:record/record.dart';\n",
+    );
+
+    final r = await run();
+    expect(r.exitCode, isNot(0));
+    expect(r.stderr.toString(), contains('nivelamento/data/capture.dart'));
+    expect(r.stderr.toString(), contains('platform audio package'));
+  });
+
+  test(
+    'lib/ file importing a module testing.dart barrel fails (Rule 5)',
+    () async {
+      write('lib/core/core.dart', 'library;\n');
+      write(
+        'lib/audio/testing.dart',
+        "library;\nexport 'testing/fake.dart';\n",
+      );
+      write('lib/audio/testing/fake.dart', 'class FakeAudioService {}\n');
+      write(
+        'lib/exercicios/data/player.dart',
+        "import 'package:catear/audio/testing.dart';\nvoid f() {}\n",
+      );
+
+      final r = await run();
+      expect(r.exitCode, isNot(0));
+      expect(r.stderr.toString(), contains('exercicios/data/player.dart'));
+      expect(r.stderr.toString(), contains('test-only surface'));
+    },
+  );
+
+  test(
+    'lib/ file reaching into a module testing/ dir fails (Rule 5)',
+    () async {
+      write('lib/core/core.dart', 'library;\n');
+      write('lib/audio/testing/fake.dart', 'class FakeAudioService {}\n');
+      write(
+        'lib/exercicios/data/player.dart',
+        "import '../../audio/testing/fake.dart';\nvoid f() {}\n",
+      );
+
+      final r = await run();
+      expect(r.exitCode, isNot(0));
+      expect(r.stderr.toString(), contains('exercicios/data/player.dart'));
+      expect(r.stderr.toString(), contains('test-only surface'));
+    },
+  );
+
+  test(
+    'a module referencing its own testing/ from lib/ still fails (Rule 5)',
+    () async {
+      write('lib/core/core.dart', 'library;\n');
+      write('lib/audio/testing/fake.dart', 'class FakeAudioService {}\n');
+      write(
+        'lib/audio/data/leak.dart',
+        "import '../testing/fake.dart';\nvoid f() {}\n",
+      );
+
+      final r = await run();
+      expect(r.exitCode, isNot(0));
+      expect(r.stderr.toString(), contains('audio/data/leak.dart'));
+      expect(r.stderr.toString(), contains('test-only surface'));
+    },
+  );
+
   test('empty lib/ fails', () async {
     write('lib/.gitkeep', '');
     final r = await run();

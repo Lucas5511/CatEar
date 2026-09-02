@@ -10,6 +10,15 @@
 //     `lib/core/core.dart` barrel. This keeps Drift-generated symbols inside
 //     core/ (they never cross data/ -> domain/).
 //  3. lib/ must contain at least one .dart file and every one must parse.
+//  4. Only files under lib/audio/ may import/export `just_audio` / `record`
+//     or any of their sibling packages (`just_audio_background`,
+//     `record_platform_interface`, …) — the platform audio packages stay
+//     behind the AudioService interface (AR-6). Checked on the raw import URI,
+//     before target resolution (which returns null for external packages).
+//  5. No file under lib/ may import/export a module's test-only surface
+//     (lib/<m>/testing.dart or lib/<m>/testing/**) — the fakes/spies there are
+//     reachable only from test/. Production code depends on the interface plus
+//     its provider, never on a test double.
 //
 // Exit code is non-zero on any violation, naming the offending file and line.
 
@@ -87,10 +96,29 @@ void main(List<String> args) {
       }
       if (uri == null) continue;
 
+      final line = parsed.lineInfo.getLocation(directive.offset).lineNumber;
+
+      // Rule 4: platform audio packages stay under lib/audio/ (AR-6). Checked
+      // on the raw uri — _resolveTarget returns null for external packages.
+      // Matches `just_audio` / `record` and their sibling packages
+      // (`just_audio_background`, `record_platform_interface`, …) but not an
+      // unrelated name that merely starts with the same letters (`recorder`).
+      final pkgName = RegExp(r'^package:([^/]+)/').firstMatch(uri)?.group(1);
+      final referencesPlatformAudio =
+          pkgName != null &&
+          (pkgName == 'just_audio' ||
+              pkgName == 'record' ||
+              pkgName.startsWith('just_audio_') ||
+              pkgName.startsWith('record_'));
+      if (referencesPlatformAudio && owningModule != 'audio') {
+        violations.add(
+          '$libRelative:$line: imports/exports platform audio package '
+          '("$uri") from outside lib/audio/',
+        );
+      }
+
       final target = _resolveTarget(uri, libRelative);
       if (target == null) continue; // dart:, package: (other), sdk imports
-
-      final line = parsed.lineInfo.getLocation(directive.offset).lineNumber;
 
       // Rule 2: Drift internals stay in core/.
       final referencesDrift =
@@ -106,6 +134,27 @@ void main(List<String> args) {
       // Rule 1: no cross-module data/ or presentation/ reach-in.
       final targetModule = _moduleOf(target);
       if (targetModule == null) continue;
+
+      // Rule 5: test-only surface (lib/<m>/testing.dart, lib/<m>/testing/**)
+      // is reachable only from test/ — never from another lib/ file. The
+      // testing barrel re-exporting its own testing/ dir is the one allowed
+      // reference.
+      final fromTestingSurface =
+          owningModule != null &&
+          (libRelative == '$owningModule/testing.dart' ||
+              libRelative.startsWith('$owningModule/testing/'));
+      final referencesTestingSurface =
+          !fromTestingSurface &&
+          (target == '$targetModule/testing.dart' ||
+              target.startsWith('$targetModule/testing/'));
+      if (referencesTestingSurface) {
+        violations.add(
+          '$libRelative:$line: imports test-only surface "$uri" '
+          '(lib/$targetModule/testing…) from lib/ — test doubles belong to '
+          'test/ only',
+        );
+      }
+
       final isPrivateLayer =
           target.startsWith('$targetModule/data/') ||
           target.startsWith('$targetModule/presentation/');
