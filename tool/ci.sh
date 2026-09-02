@@ -27,6 +27,7 @@ step "format"             dart format --output=none --set-exit-if-changed .
 step "analyze"            flutter analyze
 step "module boundaries"  dart run tool/check_module_boundaries.dart
 step "app id"             dart run tool/check_app_id.dart
+step "curriculum"         dart run tool/check_curriculum.dart
 step "test"               flutter test
 
 echo ""
