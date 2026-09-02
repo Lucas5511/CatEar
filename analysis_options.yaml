@@ -16,6 +16,7 @@ analyzer:
     - ios/**
     - "**/*.g.dart"
     - "**/*.drift.dart"
+    - test/generated/**
 
 linter:
   # The lint rules applied to this project can be customized in the

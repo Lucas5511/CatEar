@@ -1,0 +1,6 @@
+# Test tags. Run a subset with `flutter test --tags <tag>` /
+# exclude with `flutter test --exclude-tags <tag>`.
+tags:
+  migration: # drift schema-migration safety harness (test/migration_test.dart)
+  e2e: # integration_test/ — needs a device/emulator, runs in its own CI job
+  slow: # subprocess-based tool tests (dart run <script>)
