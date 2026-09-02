@@ -4,7 +4,7 @@ author: Murat (Test Architect)
 date: 2026-09-02
 baseline: master @ 4da41bb
 suite: ~141 testes unit/widget (flutter test) + 8 E2E (integration_test/, fora do CI)
-verdict: CONCERNS
+verdict: CONCERNS (gate agora PASS — ver traceability)
 ---
 
 # Test Review — Epic 1
