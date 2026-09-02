@@ -49,6 +49,9 @@ flutter:
 
   assets:
     - assets/curriculum/catalog_v1.json
+    # Pre-rendered audio samples. Real .wav files land in Story 1.3b; the
+    # directory is registered now so the AudioService contract is wired.
+    - assets/audio/
 
   fonts:
     - family: Fredoka

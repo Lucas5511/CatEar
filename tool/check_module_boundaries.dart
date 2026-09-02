@@ -10,6 +10,11 @@
 //     `lib/core/core.dart` barrel. This keeps Drift-generated symbols inside
 //     core/ (they never cross data/ -> domain/).
 //  3. lib/ must contain at least one .dart file and every one must parse.
+//  4. Only files under lib/audio/ may import/export `just_audio` / `record`
+//     or any of their sibling packages (`just_audio_background`,
+//     `record_platform_interface`, …) — the platform audio packages stay
+//     behind the AudioService interface (AR-6). Checked on the raw import URI,
+//     before target resolution (which returns null for external packages).
 //
 // Exit code is non-zero on any violation, naming the offending file and line.
 
@@ -87,10 +92,29 @@ void main(List<String> args) {
       }
       if (uri == null) continue;
 
+      final line = parsed.lineInfo.getLocation(directive.offset).lineNumber;
+
+      // Rule 4: platform audio packages stay under lib/audio/ (AR-6). Checked
+      // on the raw uri — _resolveTarget returns null for external packages.
+      // Matches `just_audio` / `record` and their sibling packages
+      // (`just_audio_background`, `record_platform_interface`, …) but not an
+      // unrelated name that merely starts with the same letters (`recorder`).
+      final pkgName = RegExp(r'^package:([^/]+)/').firstMatch(uri)?.group(1);
+      final referencesPlatformAudio =
+          pkgName != null &&
+          (pkgName == 'just_audio' ||
+              pkgName == 'record' ||
+              pkgName.startsWith('just_audio_') ||
+              pkgName.startsWith('record_'));
+      if (referencesPlatformAudio && owningModule != 'audio') {
+        violations.add(
+          '$libRelative:$line: imports/exports platform audio package '
+          '("$uri") from outside lib/audio/',
+        );
+      }
+
       final target = _resolveTarget(uri, libRelative);
       if (target == null) continue; // dart:, package: (other), sdk imports
-
-      final line = parsed.lineInfo.getLocation(directive.offset).lineNumber;
 
       // Rule 2: Drift internals stay in core/.
       final referencesDrift =
