@@ -51,8 +51,9 @@ flutter:
 
   assets:
     - assets/curriculum/catalog_v1.json
-    # Pre-rendered audio samples. Real .wav files land in Story 1.3b; the
-    # directory is registered now so the AudioService contract is wired.
+    # Pre-rendered audio samples: 14 mono .wav notes (alto sax, University of
+    # Iowa MIS) — one per audioSampleRef in catalog_v1.json. Provenance, license
+    # and the one-off conversion recipe: docs/audio/samples-v1.md (Story 1.3b).
     - assets/audio/
 
   fonts:
