@@ -172,3 +172,29 @@ retêm como itens com dono, não follow-up genérico.
   `SamplePlaybackFailed`, ou "ref malformado" é contrato-quebrado do chamador
   (e o doc-comment é ajustado para dizer isso). owner: dev da 1.4.
   evidence: `lib/audio/domain/audio_assets.dart` — `audioAssetKeyFor` lança `ArgumentError`; `_JustAudioService.playSample` chama-o dentro do `try` mas o guard `e is! Exception` deixa `ArgumentError` (que é `Error`) subir cru.
+
+## Deferred da review adversarial de spec-1-4 (2026-09-02)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-exercicio-de-reconhecimento-de-intervalo-em-contexto-musical.md`
+  summary: `_OptionButton` e `ExerciseCard` decidem cor por
+  `Theme.of(context).brightness == dark ? xDark : x` na mão. Criar um
+  `ThemeExtension` de `CatColors` (tokens semânticos — `scaffoldConsonant`,
+  `surfaceRaised`, `borderHairline`…) resolvidos por brightness uma vez, para os
+  widgets de exercício (e 1.5+) não bifurcarem. owner: dev da 1.5.
+  evidence: `lib/exercicios/presentation/interval_exercise_screen.dart`
+  (`_OptionButton.build`), `lib/exercicios/presentation/exercise_card.dart`.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-exercicio-de-reconhecimento-de-intervalo-em-contexto-musical.md`
+  summary: `PhrasePlayer` (gaps 450/450/900 ms) e o `_advanceTimer` de 700 ms
+  não têm seam de injeção; os widget tests hard-codam `tester.pump()` casando com
+  os defaults. Adicionar um seam (provider ou factory `@visibleForTesting`)
+  quando a Story 1.5 reusar o fluxo para acordes/escalas. owner: dev da 1.5.
+  evidence: `lib/exercicios/presentation/phrase_player.dart` (construtor com
+  `noteGap`/`returnHold`/`flourishGap`), `interval_exercise_screen.dart`
+  (`_advanceTimer = Timer(const Duration(milliseconds: 700), _advance)`).
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-exercicio-de-reconhecimento-de-intervalo-em-contexto-musical.md`
+  summary: O log de tentativa (`developer.log('$attempt', …)`) é stringly-typed
+  via `toString()`. O consumidor da Story 1.7 lê `state.attempts` (estruturado),
+  então o log é só debug. Revisitar o formato se a 1.7 quiser log estruturado
+  (JSON / campos nomeados). owner: dev da 1.7.
+  evidence: `lib/exercicios/presentation/interval_exercise_screen.dart`
+  (`IntervalPractice.answer`).
