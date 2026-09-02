@@ -1,0 +1,3 @@
+# Audio assets are binary — never diff, never apply line-ending normalization.
+*.wav binary
+*.aif binary

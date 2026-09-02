@@ -116,3 +116,59 @@ retêm como itens com dono, não follow-up genérico.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-3-audioservice-com-reproducao-e-fakeaudioservice.md`
   summary: `_JustAudioService` não configura `AudioSession`/categoria de sessão de áudio do `just_audio`. No iOS a reprodução costuma exigir a sessão configurada antes de `play()` ou fica silenciosa / mistura errado. Configurar (ou registrar a decisão) quando a Story 1.4 rodar o app. owner: dev da 1.4.
   evidence: `lib/audio/data/audio_service_impl.dart` — só `AudioPlayer()`, sem `AudioSession.instance.configure(...)`.
+
+## Resolução na story 1.3b (2026-09-02)
+
+- **F2 — RESOLVIDO**: teste de integração do `_JustAudioService` real criado em
+  `integration_test/audio_service_test.dart`. Lê `audioServiceProvider` sem
+  override (instância real), cobre: `playSample` de amostra empacotada completa;
+  token bem-formado sem asset (`sax_zz9`) vira `SamplePlaybackFailed` (nunca
+  `PlayerException`/`PlatformException` cru); `ProviderContainer.dispose()`
+  dispara `_JustAudioService.dispose()` sem lançar e uso pós-dispose vira
+  `StateError`. Roda no job `e2e-android` (`flutter test integration_test`).
+  - **Defeito encontrado e corrigido (AC-12):** o teste de integração revelou que
+    `_player.setAsset()` de um asset não empacotado lança um `FlutterError`
+    (`Unable to load asset: …`) — que **é um `Error`, não `Exception`** —, então
+    o `on Exception catch` de `_JustAudioService.playSample` não o traduzia e o
+    erro cru cruzava a fronteira do módulo. Corrigido com um `catch (e)` que
+    rethrow só erros de programação (`e is! Exception && e is! FlutterError`) e
+    traduz o resto para `SamplePlaybackFailed`. **Isto exigiu editar
+    `lib/audio/data/audio_service_impl.dart`**, contra a AC da spec-1-3b
+    ("nenhuma mudança em `lib/`" / "`lib/audio/**` inalterado"). Nenhum contrato
+    mudou — a correção faz a impl **cumprir** o contrato já documentado em
+    `audio_service.dart` ("Every failure surfaces as an AudioError, never a raw
+    PlayerException / PlatformException"). Era exatamente a lacuna P2 que a F2
+    existia para fechar.
+- **F7 — RESOLVIDO**: `test/audio_assets_bundle_test.dart` criado. Lê os
+  `audioSampleRefs` do `catalog_v1.json` real via `curriculoRepositoryProvider`,
+  faz `rootBundle.load(audioAssetKeyFor(ref))` para cada, e assere que
+  `assets/audio/` contém exatamente os 14 `.wav` dos tokens — sem órfão, sem
+  `.gitkeep`. Roda no job `gates` (`flutter test`).
+- Assets: 14 `.wav` mono 44,1 kHz PCM 16-bit em `assets/audio/` (sax alto, Iowa
+  MIS), `assets/audio/.gitkeep` removido. Proveniência, licença verbatim e receita
+  de conversão em `docs/audio/samples-v1.md`.
+- Itens da Story 1.4 acima (serialização de concorrência do `_JustAudioService`,
+  `AudioSession`) **permanecem abertos** — fora do escopo da 1.3b.
+
+## Deferred da review adversarial de spec-1-3b (2026-09-02)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-3b-producao-do-conjunto-de-amostras-de-audio-da-v1.md`
+  summary: A tradução real de `PlayerException`/`PlatformException` (arquivo
+  presente mas corrompido/indecodificável) → `SamplePlaybackFailed` no
+  `_JustAudioService` não tem cobertura determinística em plataforma real. O
+  `integration_test/audio_service_test.dart` exercita o caminho de asset
+  **ausente**, que sai como `FlutterError` (um `Error`), não como `Exception`. O
+  ramo `e is Exception` do `catch` fica sem teste de plataforma. Cobrir quando
+  houver um fixture de `.wav` deliberadamente corrompido carregado de fora de
+  `assets/` (ou um `AudioSource` mock). owner: dev da 1.4.
+  evidence: `lib/audio/data/audio_service_impl.dart` — `catch (e) { if (e is! Exception && e is! FlutterError) rethrow; … }`; só o ramo `FlutterError` é exercido pelo teste de integração.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-3b-producao-do-conjunto-de-amostras-de-audio-da-v1.md`
+  summary: `_JustAudioService.playSample` com `ref` malformado propaga o
+  `ArgumentError` cru de `audioAssetKeyFor` (um `Error`, não `AudioError`) — o
+  `catch` o rethrow como erro de programação. Isso contraria o doc-comment de
+  `audio_service.dart` ("Every failure surfaces as an AudioError"). Hoje o único
+  chamador seria o próprio app com tokens do catálogo (sempre bem-formados), mas
+  a Story 1.4 deve decidir: `playSample` embrulha `ArgumentError` em
+  `SamplePlaybackFailed`, ou "ref malformado" é contrato-quebrado do chamador
+  (e o doc-comment é ajustado para dizer isso). owner: dev da 1.4.
+  evidence: `lib/audio/domain/audio_assets.dart` — `audioAssetKeyFor` lança `ArgumentError`; `_JustAudioService.playSample` chama-o dentro do `try` mas o guard `e is! Exception` deixa `ArgumentError` (que é `Error`) subir cru.

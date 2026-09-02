@@ -11,6 +11,13 @@ então nada que bloqueie uso comercial deve virar dependência crítica.
 
 ## Balde 1 — Timbre dos exercícios (FR-2, Story 1.3b)
 
+> **✅ RESOLVIDO (Story 1.3b, 2026-09-02).** Os 14 `.wav` da v1 (sax alto Iowa MIS,
+> NoVib ff, mono 44,1 kHz, normalizados por R128) estão em `assets/audio/`.
+> Proveniência, licença Iowa MIS verbatim, detentor do copyright (Lawrence Fritts,
+> University of Iowa Electronic Music Studios), tabela token→AIFF e a receita de
+> conversão exata: **`docs/audio/samples-v1.md`**. O texto abaixo é o material de
+> pesquisa original que levou a essa decisão.
+
 ### O que temos agora — sax alto (preferido) + flauta (alternativo)
 
 **University of Iowa MIS — AltoSax, ff, estéreo.** Duas pastas:
@@ -137,6 +144,7 @@ Evitar: `buzzer`, `alarm`, `error harsh`, `wrong answer game show`.
 | Quando | Ação |
 |---|---|
 | ~~Verificação de transposição~~ | ✅ feita — nomes em pitch soante, nada a renomear |
+| ~~Balde 1 — conjunto v1~~ | ✅ feito (Story 1.3b) — 14 `.wav` sax NoVib em `assets/audio/`; ver `docs/audio/samples-v1.md` |
 | Protótipo (agora) | Sax NoVib como timbre padrão (D3–Ab5), sax vib como variação avançada, flauta como 2º timbre. Empilhar 3 notas p/ acordes/cadências. Converter AIFF/MP3 → WAV mono 44,1 kHz normalizado. Gato: os dois arquivos. |
 | Antes do lançamento comercial | Confirmar licença Iowa MIS por escrito **ou** migrar timbre para VSCO2 CE (CC0). UI: Kenney.nl CC0. Consolidar `ATTRIBUTIONS.md`. |
 | `content-model.md` | Registrar "andaime de timbre" (NoVib → vib) como scaffold que desvanece, paralelo ao FR-14 |
