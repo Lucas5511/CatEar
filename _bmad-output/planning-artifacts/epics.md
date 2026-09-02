@@ -154,13 +154,15 @@ So that ajustar o currículo não exija mudar código Dart.
 
 **Acceptance Criteria:**
 
-- Existe um asset JSON de currículo com schema fixo: `stages[]` com `stageId`, `order` (int monotônico), `exercises[]` com `exerciseType` (`interval | chord | scale | resolution`), `audioSampleRefs[]`, `scaffoldIntensity` (float 0.0–1.0 quando aplicável); e `errorTypes[]` como taxonomia canônica (AR-8).
-- `CurriculoRepository.load()` retorna modelos de domínio puros (data classes, sem anotação de ORM) e não promete a origem dos dados (porta aberta para OTA futuro).
-- `ExerciseType` e `ErrorType` são definidos **somente** no módulo Currículo; nenhum outro módulo inventa um valor fora dessa lista.
-- **Given** o catálogo v1, **when** o teste/lint de conteúdo roda antes do build, **then** ele falha se, **na subsequência filtrada dos estágios que usam scaffold de cor** (ignorando os que não têm `scaffoldIntensity`), ordenada por `order` crescente, algum `scaffoldIntensity` for maior que o do estágio anterior (`stage[n] <= stage[n-1]`).
-- O mesmo lint de conteúdo falha se `order` tiver valores duplicados ou não for estritamente crescente na lista de estágios.
-- O catálogo v1 mínimo cobre intervalos, acordes, escalas e ao menos um estágio de Resolução (os dados; o exercício de voz vem no Epic 3).
-- **Estágios de `exerciseType: resolution` são marcados com uma flag de capacidade** (ex: `requiresVoice: true`) e ficam **ocultos/inertes** no skill tree e na geração de sessão até o Epic 3 — o fluxo de reconhecimento (Stories 1.4/1.5) nunca tenta renderizá-los.
+> **Contrato autoritativo:** `_bmad-output/implementation-artifacts/spec-1-2-catalogo-de-curriculo-como-dado-com-invariante-de-fading.md` (bloco `<frozen-after-approval>`). Os critérios abaixo foram refinados durante a implementação da Story 1.2 — a mudança principal: **`scaffoldIntensity` e `timbreScaffold` são por-estágio, não por-exercício** (a própria AC do lint filtra a "subsequência de estágios").
+
+- Existe um asset JSON de currículo (`assets/curriculum/catalog_v1.json`) com schema fixo: `schemaVersion` (int) no topo; `stages[]` com `stageId`, `order` (int), `scaffoldIntensity` (float 0.0–1.0, **opcional, por-estágio**), `timbreScaffold` (`clean | vibrato`, opcional, por-estágio), `exercises[]`; cada `exercise` com `exerciseType` (`interval | chord | scale | resolution`), o id do tipo (`interval`/`chordQuality`/`scaleType`/`cadence`), `direction` (`asc | desc` — obrigatório em `interval`/`scale`, proibido em `chord`/`resolution`), `audioSampleRefs[]` (tokens `^[a-z0-9_]+$`), `requiresVoice` (bool — `true` sse e somente se `resolution`); mais `intervalCatalog`/`chordCatalog`/`scaleCatalog`/`cadenceCatalog` e `errorTypes[]` (taxonomia canônica, AR-8).
+- `CurriculoRepository.load()` retorna modelos de domínio puros (`sealed class Exercise` + subtipos, sem anotação de ORM) e não promete a origem dos dados (porta aberta para OTA futuro).
+- `ExerciseType` e `ErrorType` (e `Direction`, `TimbreScaffold`) são definidos **somente** no módulo Currículo; nenhum outro módulo inventa um valor fora dessa lista. `errorTypes[]` do JSON == conjunto exato dos valores do enum `ErrorType`.
+- **Given** o catálogo v1, **when** `tool/check_curriculum.dart` roda antes do build, **then** ele falha se, na subsequência filtrada dos **estágios** que declaram `scaffoldIntensity` (ignorando os que não declaram — ausente ≠ 0.0), ordenada por `order` crescente, algum `scaffoldIntensity` for maior que o do estágio anterior. Mesma invariante não-crescente para "limpeza" de `timbreScaffold` (`clean` nunca depois de `vibrato`).
+- O mesmo lint falha se `order` tiver valores duplicados ou não for estritamente crescente (após ordenar os estágios por `order` — o array pode estar em qualquer ordem).
+- O catálogo v1 cobre a taxonomia completa do `content-model.md` §7: 10 estágios num `order` 1..10 — 7 de intervalo (13 intervalos), `s-escalas`, `s-acordes`, `s-resolucao` (os dados; o exercício de voz vem no Epic 3).
+- **Exercícios de `resolution` carregam `requiresVoice: true`** no domínio; o enforcement de "oculto/inerte no skill tree e na geração de sessão" é das Stories 1.7/2.1 (registrado em `deferred-work.md`) — o fluxo de reconhecimento (Stories 1.4/1.5) nunca tenta renderizá-los.
 
 ### Story 1.3: AudioService com reprodução e FakeAudioService
 

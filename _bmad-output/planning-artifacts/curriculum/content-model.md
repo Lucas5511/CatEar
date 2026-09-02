@@ -190,27 +190,48 @@ escalas depois do Estágio 3.
 
 ---
 
-## 8. Forma sugerida no catálogo JSON (estende AR-8)
+## 8. Forma do catálogo JSON (estende AR-8)
+
+> **Implementado na Story 1.2.** Contrato autoritativo: o bloco `<frozen-after-approval>`
+> de `../../implementation-artifacts/spec-1-2-catalogo-de-curriculo-como-dado-com-invariante-de-fading.md`.
+> Diferença desta versão para o rascunho anterior: **`scaffoldIntensity` e `timbreScaffold`
+> ficam no `stage`, não no `exercise`** (a invariante de fading filtra a subsequência de
+> estágios); `direction` e `requiresVoice` ficam no `exercise`; `quality` usa rótulos PT-BR.
 
 ```json
 {
+  "schemaVersion": 1,
   "stages": [
     {
-      "stageId": "s1-consonancias",
+      "stageId": "s-consonancias",
       "order": 1,
+      "scaffoldIntensity": 1.0,
+      "timbreScaffold": "clean",
       "exercises": [
         {
           "exerciseType": "interval",
           "interval": "P5",
           "direction": "asc",
-          "audioSampleRefs": ["piano_c4", "piano_g4"],
-          "scaffoldIntensity": 0.8
+          "audioSampleRefs": ["sax_c4", "sax_g4"]
+        }
+      ]
+    },
+    {
+      "stageId": "s-resolucao",
+      "order": 2,
+      "timbreScaffold": "clean",
+      "exercises": [
+        {
+          "exerciseType": "resolution",
+          "cadence": "authentic",
+          "audioSampleRefs": ["sax_g4", "sax_b4", "sax_d5", "sax_c4", "sax_e4", "sax_g4"],
+          "requiresVoice": true
         }
       ]
     }
   ],
   "intervalCatalog": [
-    { "id": "M3", "semitones": 4, "nameUi": "terça maior", "abbr": "3M", "quality": "major" }
+    { "id": "M3", "semitones": 4, "nameUi": "terça maior", "abbr": "3M", "quality": "maior" }
   ],
   "chordCatalog": [
     { "id": "major", "nameUi": "tríade maior", "intervals": [4, 7], "inversion": 0 }
@@ -229,8 +250,13 @@ escalas depois do Estágio 3.
 }
 ```
 
-`errorTypes` é a taxonomia canônica única (AR-8) — a UI de múltipla escolha e o
-`errorType` do `SessionResultReported` só usam valores daqui.
+Regras (validadas por `tool/check_curriculum.dart` + `CurriculoRepository.load()`):
+
+- `scaffoldIntensity` (0.0–1.0) e `timbreScaffold` (`clean`|`vibrato`) são **por estágio**, opcionais. Ausente ≠ 0.0 — o estágio é excluído da subsequência da invariante.
+- `direction` (`asc`|`desc`): obrigatório em `interval` e `scale`, proibido em `chord` e `resolution`.
+- `requiresVoice`: presente e `true` **se e somente se** `exerciseType == "resolution"`.
+- `errorTypes` é a taxonomia canônica única (AR-8) e deve ser **exatamente** o conjunto de valores do enum `ErrorType` — a UI de múltipla escolha e o `errorType` do `SessionResultReported` só usam valores daqui.
+- Invariantes de build: `order` único e estritamente crescente; `scaffoldIntensity` não-crescente na subsequência ordenada; `timbreScaffold` nunca volta de `vibrato` para `clean`.
 
 ---
 
@@ -238,7 +264,7 @@ escalas depois do Estágio 3.
 
 | Consumidor | O que tirar |
 |---|---|
-| **Catálogo AR-8 / Story 1.2** | Adicionar `intervalCatalog`, `chordCatalog`, `scaleCatalog`, `cadenceCatalog` ao schema; `errorTypes` expandido para a lista da §8 |
+| **Catálogo AR-8 / Story 1.2** | ✅ Entregue — `catalog_v1.json` + módulo `curriculo` com os `*Catalog`, `errorTypes` == enum `ErrorType`, e o lint de fading (`tool/check_curriculum.dart`). Ver §8 para a forma final. |
 | **Story 1.6 (feedback)** | Microcopy dos pares de confusão da §2; graus de escala da §4 para "você cantou a mediante…" |
 | **Story 3.5 (Resolução)** | `authentic` (V→I) é o núcleo; pedir a tônica cantada; `plagal` como contraste |
 | **note-scope.md** | Os 7 estágios da §7 substituem/detalham a tabela de estágios de lá |

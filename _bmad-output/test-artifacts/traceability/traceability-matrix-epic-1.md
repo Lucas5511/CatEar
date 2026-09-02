@@ -14,7 +14,7 @@ oracleSources:
 externalPointerStatus: not_used
 collection_status: COLLECTED
 allow_gate: true
-gate_decision: CONCERNS
+gate_decision: PASS
 ---
 
 # Traceability Matrix — Epic 1
@@ -140,12 +140,26 @@ Legenda de cobertura: **FULL** = comportamento asserido por teste automatizado q
 
 ---
 
-## Atualização de gate — 2026-09-02 (pós branch `test/epic-1-quality-gate`)
+## Atualização de gate — 2026-09-02
 
-**PASS pendente do 1º CI verde.**
+### **PASS** ✅
 
-- **R1** mitigado: job `build-android` + prova local. AC-1.1-a sai de PARTIAL para FULL assim que o job passar no GitHub.
-- **R2** mitigado: harness na suíte (`flutter test` agora 145 testes). IO-1.1-1 (path do banco) continua PARTIAL até o `e2e-android` rodar com `databaseProvider` real — recomendação TQ-6 (1 teste E2E com provider real no emulador) fecha isso.
-- **R3** endereçado mas **não comprovado** — o gate só vira PASS quando `build-android` **e** `e2e-android` fecharem verdes num PR.
+**Evidência:** CI run `33648...` / `33647227345` (merge do PR #4 em `master`) — os 3 jobs verdes:
 
-Enquanto os dois jobs novos não tiverem um run verde registrado: **CONCERNS → PASS-pending**. Nenhuma ação de código pendente; só falta a execução no CI real.
+| Job | Cobre | Resultado |
+|---|---|---|
+| `gates` | `tool/ci.sh` + 145 testes unit/widget (inclui `migration_test`) | ✅ 219s |
+| `build-android` | **R1** — `flutter build apk --debug` | ✅ 545s |
+| `e2e-android` | **R3** — `integration_test/` (8 jornadas) em emulador API-35 | ✅ 711s |
+
+- **R1** mitigado e comprovado → **AC-1.1-a passa de PARTIAL para FULL**.
+- **R2** mitigado → `migration_test` na suíte; trip-wire pronto para a Story 1.8.
+- **R3** mitigado e comprovado → jornadas E2E rodam em CI.
+
+**Cobertura P0 atualizada:** 10/11 FULL (91%). O único PARTIAL restante é IO-1.1-1 (o path *real* `getApplicationSupportDirectory()` só é exercido pelo `databaseProvider` mockado; recomendação **TQ-6** — 1 teste E2E com `databaseProvider` real no emulador — fecha isso, e é P1, não bloqueia PASS).
+
+**PARTIALs restantes** (todos P1/P2/P3, nenhum bloqueia o gate): AC-1.1-c/f/g (scripts de tool sem teste próprio), IO-1.1-6/7 (acessibilidade + `check_module_boundaries` incompletos — R7/R4), AC-1.2-e/g. Endereçar durante o Epic 1 conforme as ações P1 do test-design.
+
+### Planejamento reconciliado (R5)
+
+`epics.md` AC1 e `content-model.md` §8 atualizados para a forma real do schema (`scaffoldIntensity`/`timbreScaffold` por-estágio, `direction`/`requiresVoice` por-exercício). Contrato autoritativo = bloco `<frozen-after-approval>` de `spec-1-2`.
