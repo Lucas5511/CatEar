@@ -424,7 +424,7 @@ void main() {
     expect(find.text('go'), findsOneWidget);
   });
 
-  testWidgets('catalog CurriculumError shows the "temporary" retry state', (
+  testWidgets('a missing catalog asset shows the "temporary" retry state', (
     tester,
   ) async {
     final container = _container(
@@ -438,6 +438,23 @@ void main() {
     expect(find.textContaining('Não consegui carregar'), findsOneWidget);
     expect(find.textContaining('temporário'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a malformed catalog is not shown as "temporary"', (
+    tester,
+  ) async {
+    final container = _container(
+      catalogError: const CurriculumError.malformedCatalog(
+        'stages',
+        'not a list',
+      ),
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Algo deu errado'), findsOneWidget);
+    expect(find.textContaining('temporário'), findsNothing);
   });
 
   testWidgets('an unexpected build error shows a plain error state, not '
@@ -474,4 +491,150 @@ void main() {
     await tester.pump();
     expect(find.textContaining('O som não tocou'), findsNothing);
   });
+
+  testWidgets(
+    'keeps the auto-dispose audio service alive while the screen is mounted',
+    (tester) async {
+      final fake = FakeAudioService();
+      final container = ProviderContainer(
+        overrides: [
+          // `overrideWith` (not `overrideWithValue`) keeps the provider
+          // auto-dispose, so a screen that only `ref.read`s it would let the
+          // real service be torn down before the first motif.
+          audioServiceProvider.overrideWith((ref) {
+            ref.onDispose(fake.dispose);
+            return fake;
+          }),
+          catalogAssetBundleProvider.overrideWithValue(_RealCatalogBundle()),
+        ],
+      );
+      addTearDown(container.dispose);
+      await tester.pumpWidget(_app(container));
+      await _settleFirstMotif(tester);
+
+      expect(
+        fake.disposeCount,
+        0,
+        reason: 'the screen must hold a listener on audioServiceProvider',
+      );
+      expect(
+        fake.playedRefs,
+        isNotEmpty,
+        reason: 'the first motif must actually play',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a non-AudioError from playback surfaces the banner, not a raw crash',
+    (tester) async {
+      final container = ProviderContainer(
+        overrides: [
+          audioServiceProvider.overrideWithValue(_ThrowingAudioService()),
+          catalogAssetBundleProvider.overrideWithValue(_RealCatalogBundle()),
+        ],
+      );
+      addTearDown(container.dispose);
+      await tester.pumpWidget(_app(container));
+      await _settleFirstMotif(tester);
+
+      expect(find.textContaining('O som não tocou'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a card whose audio keeps failing still lets the learner answer',
+    (tester) async {
+      final fake = FakeAudioService();
+      final container = _container(audio: fake);
+      addTearDown(container.dispose);
+      await tester.pumpWidget(_app(container));
+      await tester.pump();
+      await tester.pump();
+      fake.unplayableRefs.add(_state(container).current.audioSampleRefs.first);
+      await _settleFirstMotif(tester);
+
+      expect(find.textContaining('O som não tocou'), findsOneWidget);
+
+      // The options are usable despite the audio failure — the learner is not
+      // stranded with only the back button.
+      await tester.tap(find.text(_state(container).answer.nameUi).last);
+      await tester.pump();
+      expect(_state(container).attempts, hasLength(1));
+    },
+  );
+
+  testWidgets(
+    'replaying after a correct answer cancels the pending auto-advance',
+    (tester) async {
+      final container = _container();
+      addTearDown(container.dispose);
+      await tester.pumpWidget(_app(container));
+      await _settleFirstMotif(tester);
+      final index0 = _state(container).index;
+
+      await tester.tap(find.text(_state(container).answer.nameUi).last);
+      await tester.pump(); // answer recorded, flourish begins
+      await tester.pump(const Duration(milliseconds: 600)); // flourish done
+
+      await tester.tap(find.text('Ouvir de novo'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 900)); // past old 700ms
+
+      expect(
+        _state(container).index,
+        index0,
+        reason: 'the replay cancelled the auto-advance',
+      );
+      expect(find.text('Continuar'), findsOneWidget);
+
+      await tester.tap(find.text('Continuar'));
+      await tester.pump();
+      await _settleFirstMotif(tester);
+      expect(_state(container).index, index0 + 1);
+    },
+  );
+
+  testWidgets('answering stops a replay motif still in flight', (tester) async {
+    final fake = FakeAudioService(
+      playLatency: const Duration(milliseconds: 250),
+    );
+    final container = _container(audio: fake);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester);
+
+    await tester.tap(find.text('Ouvir de novo'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100)); // motif mid-note
+    final stopsBefore = fake.stopCount;
+
+    final wrong = _state(container).options
+        .firstWhere((o) => o.id != _state(container).answer.id);
+    await tester.tap(find.text(wrong.nameUi).last);
+    await tester.pump();
+
+    expect(
+      fake.stopCount,
+      greaterThan(stopsBefore),
+      reason: 'the in-flight motif is cut when the answer lands',
+    );
+    await tester.pump(const Duration(seconds: 2));
+  });
+}
+
+/// Always throws a non-`AudioError` from playback — exercises `_playMotif`'s
+/// broad `catch`.
+class _ThrowingAudioService implements AudioService {
+  @override
+  Future<void> playSample(String ref) async =>
+      throw StateError('platform boom');
+
+  @override
+  Future<void> stop() async {}
+
+  @override
+  Future<void> dispose() async {}
 }
