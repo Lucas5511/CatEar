@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-01-2026 12:00
-last_updated: 09-02-2026 23:10
+last_updated: 09-03-2026 17:04
 project: CatEar
 project_key: NOKEY
 tracking_system: file-system
@@ -40,7 +40,7 @@ development_status:
   1-2-catálogo-de-currículo-como-dado-com-invariante-de-fading-val: done
   1-3-audioservice-com-reprodução-e-fakeaudioservice: done
   1-3b-produção-do-conjunto-de-amostras-de-áudio-da-v1: done
-  1-4-exercício-de-reconhecimento-de-intervalo-em-contexto-musical: review
+  1-4-exercício-de-reconhecimento-de-intervalo-em-contexto-musical: done
   1-5-exercícios-de-reconhecimento-de-acordes-e-escalas: backlog
   1-6-feedback-explicativo-em-erro: backlog
   1-7-estrutura-de-sessão-de-10-15-minutos: backlog
@@ -89,13 +89,24 @@ action_items:
     action: "Rodar bmad-testarch-ci: cobertura no CI, burn-in do job e2e-android,
       git diff --exit-code pós-regen"
     owner: "Murat"
-    status: open
+    status: in-progress
+    resolution: "Parcial (PR #17). Feito: workflow e2e-burn-in.yaml (noturno + manual,
+      imprime a taxa de falha) e o endurecimento estrutural do e2e-android
+      (timeouts nos 3 jobs, cache de Gradle, snapshot de AVD em cache) — 7,7 min
+      num run frio, contra 14 min antes. Falta: cobertura no CI, e o git diff
+      --exit-code depois da regeneração de drift_schemas/ e contrast-audit.md.
+      Ler a taxa do burn-in após ~3 noites."
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-02.md"
   - id: "epic-1-retro-item-3-triar-deferred-work-md-tag-por-item-puxa"
     epic: 1
     action: "Triar deferred-work.md: tag por item (puxar-para-story / aceitar / precisa-decisão)"
     owner: "John+Murat"
-    status: open
+    status: in-progress
+    resolution: "Parcial (PR #17). Os 3 itens com owner 'dev da 1.4' foram triados (2 para
+      'dev da 1.5', 1 executado: AudioSession), com a triagem registrada no
+      rodapé do deferred-work.md. O gate check_deferred_owners agora força essa
+      triagem para toda story que entra em in-progress/review. Falta a passada
+      no resto do arquivo (~30 itens sem tag de disposição)."
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-02.md"
   - id: "epic-1-retro-item-4-dod-de-story-se-o-frozen-block-divergiu"
     epic: 1
@@ -138,14 +149,24 @@ action_items:
       por itens com 'owner: dev da X' e puxá-los para a spec (dois itens com
       owner 'dev da 1.4' foram ignorados; um quebrou o CI)"
     owner: "processo"
-    status: open
+    status: done
+    resolution: "PR #17. Virou gate executável em vez de passo de processo:
+      tool/check_deferred_owners.dart no tool/ci.sh falha o build quando um
+      bloco não resolvido do deferred-work.md nomeia uma story
+      in-progress/review. Na primeira execução acusou 3 itens — a retro tinha
+      contado 2."
     ref: "_bmad-output/implementation-artifacts/session-retro-2026-09-03.md"
   - id: "session-retro-2026-09-03-s3-nao-mergear-com-e2e-incompleto"
     epic: 1
     action: "Não mergear com e2e-android incompleto ou vermelho; se o job morrer
       por infra, re-rodar e esperar (PRs #10/#11/#13 furaram isso)"
     owner: "processo"
-    status: open
+    status: done
+    resolution: "PR #17 + branch protection no master (2026-09-03, repo agora público).
+      gates/build-android/build-ios/e2e-android são required checks, com
+      enforce_admins true — sem isso a proteção seria decorativa para um dono
+      solo, que é como #10/#11/#13/#14 entraram vermelhas. Merge só por PR, 0
+      aprovações (dono solo não pode aprovar o próprio PR)."
     ref: "_bmad-output/implementation-artifacts/session-retro-2026-09-03.md"
   - id: "session-retro-2026-09-03-s4-journey-e2e-na-mesma-pr-da-tela"
     epic: 1
@@ -159,5 +180,11 @@ action_items:
     action: "Executar a configuração de AudioSession do iOS antes de rodar em
       device (deferido da 1.3 com owner 'dev da 1.4', nunca feito)"
     owner: "dev"
-    status: open
+    status: done
+    resolution: "PR #17. AudioSessionConfiguration.music() configurada no construtor de
+      _JustAudioService e aguardada antes do primeiro setAsset; best-effort, com
+      o mesmo guard de erro de _quietStop/dispose. audio_session 0.2.4 virou dep
+      direta e entrou na Regra 4 do check_module_boundaries. Android provado
+      verde (e2e 18/18); reprodução em device iOS continua sem verificação —
+      build-ios cobre só compilação."
     ref: "_bmad-output/implementation-artifacts/session-retro-2026-09-03.md"
