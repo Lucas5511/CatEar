@@ -198,4 +198,72 @@ void main() {
     );
     expect(overflow, isEmpty, reason: overflow.map((e) => '$e').join('\n'));
   });
+
+  // --- Story 1.4: the practice flow over the REAL provider graph ------------
+  //
+  // Every widget test of the exercise screen overrides `audioServiceProvider`
+  // with a `FakeAudioService`, so none of them exercises the real
+  // `_JustAudioService` or its auto-dispose lifecycle. That gap let a shipped
+  // regression through: the screen only `ref.read` the auto-dispose provider,
+  // so the real service was torn down before the first motif and every
+  // `playSample` threw `StateError`. This journey is the guard — it lives in
+  // this file (not a new one) because `flutter test integration_test` runs a
+  // full Gradle build per file, and a third build starves the CI emulator.
+
+  testWidgets('Praticar plays a real interval motif and takes an answer', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+
+    await tester.tap(find.text('Praticar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Que intervalo é este?'), findsOneWidget);
+    expect(find.text('Ouvir de novo'), findsOneWidget);
+
+    // Let the real AudioService sequence the motif (450 + 450 + 900 ms) with
+    // slack for the platform player.
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+
+    // The whole point: with the real (auto-dispose) provider the playback must
+    // succeed. A torn-down service surfaces the audio-error banner instead.
+    expect(
+      find.textContaining('O som não tocou'),
+      findsNothing,
+      reason: 'the real AudioService must stay alive for the screen lifetime',
+    );
+
+    // The options are live and answering produces a result line.
+    final options = find.byType(FilledButton);
+    expect(options, findsWidgets);
+    await tester.tap(options.first);
+    await tester.pumpAndSettle();
+
+    final resultLine =
+        find.textContaining('Isso!').evaluate().isNotEmpty ||
+        find.textContaining('Não foi dessa vez').evaluate().isNotEmpty;
+    expect(
+      resultLine,
+      isTrue,
+      reason: 'answering must land on a correct or incorrect result line',
+    );
+  });
+
+  testWidgets('leaving the exercise mid-flow returns to Home cleanly', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+
+    await tester.tap(find.text('Praticar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Que intervalo é este?'), findsOneWidget);
+
+    // Pop while the motif is still sequencing — teardown must not throw.
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(HomeShell), findsOneWidget);
+    expect(find.text('Que bom ter você no CatEar!'), findsOneWidget);
+  });
 }
