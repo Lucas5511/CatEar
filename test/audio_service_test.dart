@@ -5,6 +5,8 @@ import 'package:fake_async/fake_async.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/audio_service_contract.dart';
+
 /// Covers every "fake" row of the spec's I/O & edge-case matrix, the pure
 /// `audioAssetKeyFor` map (including against the real catalog tokens), the
 /// `SamplePlaybackFailed` value contract, and the `audioServiceProvider` wiring
@@ -13,8 +15,28 @@ import 'package:flutter_test/flutter_test.dart';
 /// The real `_JustAudioService` is never constructed here — the spec forbids
 /// exercising it against `just_audio` under `flutter test`; a post-1.3b
 /// integration test covers it (see `deferred-work.md`).
+///
+/// The shared `AudioService` contract (`test/support/audio_service_contract.dart`)
+/// runs here against the fake and, from the same source, against the real
+/// service in `integration_test/`. Everything in this file on top of it is
+/// fake-specific: the recorder (`playedRefs`, `interruptedRefs`, `stopCount`),
+/// the pure `audioAssetKeyFor` map, the `SamplePlaybackFailed` value contract
+/// and the `audioServiceProvider` wiring.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  // Same suite the real `_JustAudioService` answers to on a device. The fake is
+  // built with a non-zero `playLatency` so playback has a duration and
+  // interruption is actually observable — a zero-latency fake would pass the
+  // overlap case vacuously, which is how the two implementations drifted apart
+  // in the first place.
+  runAudioServiceContract(
+    target: 'FakeAudioService',
+    build: () => FakeAudioService(
+      unplayableRefs: {unplayableRef},
+      playLatency: const Duration(milliseconds: 200),
+    ),
+  );
 
   group('FakeAudioService', () {
     test('playSample records the ref, in order (replay is free)', () async {

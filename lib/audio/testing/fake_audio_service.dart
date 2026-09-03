@@ -48,6 +48,13 @@ class FakeAudioService implements AudioService {
   Completer<void>? _inFlight;
   String? _playingRef;
 
+  /// The pending completion of the sample in flight. A [Timer] (not a
+  /// `Future.delayed`) so interruption can cancel it: a `Future.delayed` left
+  /// running keeps a pending timer alive past the end of the test that started
+  /// it, which trips `testWidgets`' timer check in any suite that interrupts
+  /// playback.
+  Timer? _timer;
+
   /// Whether a [playSample] call is currently mid-playback (only possible with
   /// a non-zero [playLatency]).
   bool get isPlaying => _playingRef != null;
@@ -65,12 +72,11 @@ class FakeAudioService implements AudioService {
     final completer = Completer<void>();
     _inFlight = completer;
     _playingRef = ref;
-    Future<void>.delayed(playLatency).then((_) {
-      if (identical(_inFlight, completer)) {
-        _inFlight = null;
-        _playingRef = null;
-        completer.complete();
-      }
+    _timer = Timer(playLatency, () {
+      _timer = null;
+      _inFlight = null;
+      _playingRef = null;
+      completer.complete();
     });
     return completer.future;
   }
@@ -95,6 +101,8 @@ class FakeAudioService implements AudioService {
     final completer = _inFlight;
     if (completer == null) return;
     interruptedRefs.add(_playingRef!);
+    _timer?.cancel();
+    _timer = null;
     _inFlight = null;
     _playingRef = null;
     completer.complete();
