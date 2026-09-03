@@ -6,6 +6,8 @@
 /// AR-6 gate (`tool/check_module_boundaries.dart` Rule 4) enforces that.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show FlutterError;
 import 'package:just_audio/just_audio.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -46,6 +48,15 @@ class _JustAudioService implements AudioService {
   /// preempt an in-flight `play()` so its future completes.
   Future<void> _chain = Future<void>.value();
 
+  /// How long a new operation waits for its predecessor before abandoning it.
+  ///
+  /// `just_audio`'s `play()` awaits a completer the platform may never settle
+  /// (an emulator audio sink that never signals end-of-stream). Without this
+  /// bound one wedged operation would block every later `playSample` / `stop`
+  /// for the life of the service. The stalled op still drops out on its own
+  /// generation check when (if) it resolves.
+  static const _predecessorWait = Duration(seconds: 10);
+
   @override
   // `async` so a post-dispose `_ensureAlive()` surfaces as a rejected future,
   // not a synchronous throw — callers (the phrase player, widget `dispose`)
@@ -55,12 +66,26 @@ class _JustAudioService implements AudioService {
     final generation = ++_generation;
     // Preempt first, outside the chain, so an in-flight `play()` completes and
     // its operation drops out at its next generation check.
-    final preempted = _quietStop();
-    final op = _chain
+    final preempted = _guarded(_quietStop());
+    final op = _waitForPredecessor()
         .then((_) => preempted)
         .then((_) => _playSerialized(ref, generation));
     _chain = op.then((_) {}, onError: (Object _, StackTrace _) {});
     return op;
+  }
+
+  /// The current chain, bounded by [_predecessorWait] so a wedged operation
+  /// cannot block the queue forever.
+  Future<void> _waitForPredecessor() =>
+      _chain.timeout(_predecessorWait, onTimeout: () {});
+
+  /// Attaches an error listener now so a rejection in the window before the
+  /// chain reaches this future is not delivered to the zone as an unhandled
+  /// async error. The original future is still awaited by the chain, so the
+  /// error is not lost — only pre-observed.
+  Future<void> _guarded(Future<void> future) {
+    unawaited(future.catchError((Object _) {}));
+    return future;
   }
 
   Future<void> _playSerialized(String ref, int generation) async {
@@ -82,13 +107,18 @@ class _JustAudioService implements AudioService {
       // playback failures. A genuine programming error (StateError, TypeError,
       // a failed assert) is not — rethrow it untouched.
       if (e is! Exception && e is! FlutterError) rethrow;
-      // Superseded mid-flight: a newer `playSample`/`stop` preempted us and
-      // `just_audio` aborted the load or the playback. That is *interruption*,
-      // which the contract promises — not a playback failure. Reporting it
-      // would make the phrase player of Story 1.4 (which shortens notes by
-      // firing overlapping calls on purpose) see a spurious error on every
-      // note it cuts.
-      if (_disposed || generation != _generation) return;
+      // Interruption is not failure. A newer `playSample`/`stop` preempts us by
+      // stopping the player, and `just_audio` aborts the in-flight load with
+      // `PlayerInterruptedException` — exactly what the interface promises
+      // ("interrupts any sample still playing"), and what the Story 1.4 phrase
+      // player triggers on every note it cuts short.
+      //
+      // Matched on the exception type, NOT on a stale generation: a superseded
+      // call can still fail for a real reason (a missing or corrupt sample
+      // whose `setAsset` outlives the 450 ms note gap), and swallowing that
+      // would leave the card silent with no error and no banner.
+      if (e is PlayerInterruptedException) return;
+      if (_disposed) return;
       // If setAsset succeeded but play() threw, the player still holds the
       // asset — best-effort reset before we hand back a domain error. Swallow
       // anything this throws (a FlutterError included): we are already
@@ -107,14 +137,12 @@ class _JustAudioService implements AudioService {
   // returned future rather than throwing synchronously.
   Future<void> stop() async {
     _ensureAlive();
-    // Supersede any playback in flight, then silence outside the chain so the
-    // pending `play()` can complete; the returned future still waits for the
-    // chain so callers observe a settled player.
+    // Supersede whatever is in flight and silence the player immediately,
+    // outside the chain. `stop` deliberately does NOT wait for the queue:
+    // silencing must stay responsive even when a predecessor is wedged, and
+    // the superseded operation abandons itself on its own generation check.
     ++_generation;
-    final stopped = _quietStop();
-    final op = _chain.then((_) => stopped);
-    _chain = op.then((_) {}, onError: (Object _, StackTrace _) {});
-    return op;
+    return _quietStop();
   }
 
   /// Silences the player, swallowing platform failures. Best-effort: silencing

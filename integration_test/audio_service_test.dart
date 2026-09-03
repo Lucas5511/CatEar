@@ -113,6 +113,33 @@ void main() {
     },
   );
 
+  testWidgets(
+    'a missing sample still reports failure when other calls are in flight',
+    (tester) async {
+      final (container: _, :service) = realService();
+
+      // Both halves of the contract at once. Interruption is matched on
+      // `PlayerInterruptedException`, never on "a newer call superseded me" —
+      // otherwise a real failure landing after supersession would be swallowed
+      // and the card would go silent with no error and no banner.
+      //
+      // Start a real sample, then ask for a missing one while it plays:
+      // - the missing request is current, so its failure must surface;
+      // - the sample it cut short was interrupted, so it must complete quietly.
+      final playing = service.playSample('sax_c4');
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      final missing = service.playSample('sax_zz9');
+
+      await expectLater(
+        missing.timeout(_playTimeout),
+        throwsA(
+          isA<SamplePlaybackFailed>().having((e) => e.ref, 'ref', 'sax_zz9'),
+        ),
+      );
+      await playing.timeout(_playTimeout);
+    },
+  );
+
   testWidgets('disposing the container disposes the service, without throwing', (
     tester,
   ) async {
