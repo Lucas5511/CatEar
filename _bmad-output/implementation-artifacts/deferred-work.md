@@ -198,3 +198,61 @@ retêm como itens com dono, não follow-up genérico.
   (JSON / campos nomeados). owner: dev da 1.7.
   evidence: `lib/exercicios/presentation/interval_exercise_screen.dart`
   (`IntervalPractice.answer`).
+
+## Deferred from: /code-review de f180ff5..0f153b3 (Story 1.4, 2026-09-03)
+
+Corrigidos num follow-up (`fix/interval-exercise-audio-lifecycle`): o bug crítico
+do `audioServiceProvider` auto-descartado, o `catch` estreito do `_playMotif`, o
+trap em falha de áudio persistente, a corrida replay-vs-auto-advance, o motivo
+que continuava tocando após responder, e `MalformedCatalog`/`UnknownValue`
+mostrados como "temporário". Itens abaixo ficam para stories futuras.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-exercicio-de-reconhecimento-de-intervalo-em-contexto-musical.md`
+  summary: `_RetryView` em `exercicios/presentation/` reimplementa
+  `lib/app/database_error_screen.dart` (mesma árvore, string "temporário"
+  copiada). Promover o "warm retry screen" para `core/` e reusar nos dois lados.
+  evidence: `lib/exercicios/presentation/interval_exercise_screen.dart`
+  (`_RetryView`) vs `lib/app/database_error_screen.dart`.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-exercicio-de-reconhecimento-de-intervalo-em-contexto-musical.md`
+  summary: 3 subclasses ad-hoc de `CachingAssetBundle` no `test/` (`_RealCatalogBundle`,
+  `_FakeBundle`) + `_FailingRepo` duplicam seams que `test/support/` já poderia
+  centralizar; parte dos testes de `exercicios/` nem precisa do bundle override
+  (basta `curriculoRepositoryProvider.load()` sob `flutter test`). Consolidar em
+  `test/support/`.
+  evidence: `test/exercicios/interval_exercise_screen_test.dart`,
+  `test/curriculum_catalog_test.dart`, `test/support/curriculum_fixtures.dart`.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-exercicio-de-reconhecimento-de-intervalo-em-contexto-musical.md`
+  summary: Três idiomas separados de "delay cancelável" (`PhrasePlayer._wait`/
+  `_generation`, `_advanceTimer`+`_advanced`, `FakeAudioService` `Completer`+
+  `identical`). Um `CancelableDelay` em `core/` colapsaria os três.
+  evidence: `lib/exercicios/presentation/phrase_player.dart`,
+  `interval_exercise_screen.dart`, `lib/audio/testing/fake_audio_service.dart`.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-exercicio-de-reconhecimento-de-intervalo-em-contexto-musical.md`
+  summary: Redundância de estado no `_ActiveExerciseViewState` — `_optionsEnabled`
+  é o shadow booleano de `_enabledAt != null`; `_motifInFlight` reimplementa o
+  `_generation` do `PhrasePlayer`; `_advanced` duplica a guarda de fase do
+  `IntervalPractice.advance()`. Enxugar quando a 1.5 tocar neste widget.
+  evidence: `lib/exercicios/presentation/interval_exercise_screen.dart:217-232`.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-exercicio-de-reconhecimento-de-intervalo-em-contexto-musical.md`
+  summary: `IntervalPracticeState` copia `loop`/`pool` (23 + 13 itens) com
+  `List.unmodifiable` a cada `answer()`/`advance()` embora sejam constantes pela
+  vida da tela; `intervalPool` chama `intervalLoop` de novo no `build()`. Passar
+  `loop` pré-computado / guardar as listas imutáveis uma vez.
+  evidence: `lib/exercicios/presentation/interval_exercise_screen.dart`
+  (`IntervalPracticeState` ctor, `IntervalPractice.build`),
+  `lib/exercicios/domain/interval_practice.dart` (`intervalPool`).
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-exercicio-de-reconhecimento-de-intervalo-em-contexto-musical.md`
+  summary: `ExerciseCard` só carrega estilo (`Container` decorado) — não é o seam
+  slot-based que "1.5 reusa sem ramificar por tipo" pede. O prompt, o player, o
+  loop de opções, `_ResultLine` e "Continuar" estão presos a `IntervalSpec` no
+  `_ActiveExerciseViewState`. Extrair slots type-agnostic (player / resposta /
+  resultado) antes da 1.5, ou aceitar a cópia.
+  evidence: `lib/exercicios/presentation/exercise_card.dart`,
+  `interval_exercise_screen.dart` (`_ActiveExerciseViewState.build`).
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-exercicio-de-reconhecimento-de-intervalo-em-contexto-musical.md`
+  summary: `ExerciseAttempt.errorTypeForIntervalId` acopla `IntervalSpec.id` e
+  `ErrorType.id` por igualdade de string com `orElse: throw` — quebra em runtime
+  (mid-sessão, fora do `AsyncValue.error`) se um catálogo v2 trouxer um id de
+  intervalo sem `ErrorType` correspondente. Um mapa const validado por teste
+  sobre o catálogo, ou `ErrorType.forIntervalId` checado, fecharia isso.
+  evidence: `lib/exercicios/domain/exercise_attempt.dart`.

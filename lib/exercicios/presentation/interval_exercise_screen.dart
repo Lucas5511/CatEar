@@ -181,7 +181,10 @@ class IntervalExerciseScreen extends ConsumerWidget {
       body: SafeArea(
         child: async.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => error is CurriculumError
+          // Only a missing asset is plausibly transient; a malformed catalog or
+          // an unknown token is a permanent failure — don't promise "temporary"
+          // and an endless retry.
+          error: (error, _) => error is AssetNotFound
               ? _RetryView(
                   title: 'Não consegui carregar os exercícios',
                   message: 'Isso costuma ser temporário. Vamos tentar de novo?',
@@ -216,6 +219,10 @@ class _ActiveExerciseView extends ConsumerStatefulWidget {
 
 class _ActiveExerciseViewState extends ConsumerState<_ActiveExerciseView> {
   late final PhrasePlayer _player;
+
+  /// Keeps `audioServiceProvider` (auto-dispose) alive for this screen's life.
+  ProviderSubscription<AudioService>? _audioSub;
+
   bool _optionsEnabled = false;
   DateTime? _enabledAt;
   SamplePlaybackFailed? _audioError;
@@ -236,7 +243,14 @@ class _ActiveExerciseViewState extends ConsumerState<_ActiveExerciseView> {
   @override
   void initState() {
     super.initState();
-    _player = PhrasePlayer(ref.read(audioServiceProvider));
+    // `audioServiceProvider` is auto-dispose. A bare `ref.read` leaves it with
+    // zero listeners, so Riverpod tears down the real `_JustAudioService`
+    // (firing its `onDispose`) before the first motif plays — every
+    // `playSample` would then throw `StateError`. A manual listen holds it
+    // open for this screen's lifetime; it is closed in `dispose`.
+    final sub = ref.listenManual(audioServiceProvider, (_, _) {});
+    _audioSub = sub;
+    _player = PhrasePlayer(sub.read());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _playMotif();
     });
@@ -245,12 +259,17 @@ class _ActiveExerciseViewState extends ConsumerState<_ActiveExerciseView> {
   @override
   void dispose() {
     _advanceTimer?.cancel();
-    _player.stop();
+    _player.stop().ignore();
+    _audioSub?.close();
     super.dispose();
   }
 
   Future<void> _playMotif() async {
     if (_motifInFlight) return;
+    // A replay request pauses any pending auto-advance — the learner asked to
+    // keep listening; they leave via "Continuar".
+    _advanceTimer?.cancel();
+    _advanceTimer = null;
     setState(() {
       _motifInFlight = true;
       _audioError = null;
@@ -260,20 +279,43 @@ class _ActiveExerciseViewState extends ConsumerState<_ActiveExerciseView> {
       if (!mounted) return;
       setState(() {
         _motifInFlight = false;
-        if (!_optionsEnabled) {
-          _optionsEnabled = true;
-          _enabledAt = clock.now();
-        }
+        _enableOptions();
       });
     } on AudioError catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _motifInFlight = false;
-        _audioError = error is SamplePlaybackFailed
+      _showAudioError(
+        error is SamplePlaybackFailed
             ? error
-            : SamplePlaybackFailed(_s.current.audioSampleRefs.first, '$error');
-      });
+            : SamplePlaybackFailed(_refForError(), '$error'),
+      );
+    } catch (error) {
+      // `playMotif` can also surface a `StateError` (service torn down) or an
+      // `ArgumentError` (empty refs) — never let a raw exception escape.
+      _showAudioError(SamplePlaybackFailed(_refForError(), '$error'));
     }
+  }
+
+  String _refForError() {
+    final refs = _s.current.audioSampleRefs;
+    return refs.isEmpty ? '?' : refs.first;
+  }
+
+  /// Anchors the reaction-time clock the first time the learner can act.
+  /// Replays do not move it.
+  void _enableOptions() {
+    if (_optionsEnabled) return;
+    _optionsEnabled = true;
+    _enabledAt = clock.now();
+  }
+
+  void _showAudioError(SamplePlaybackFailed error) {
+    if (!mounted) return;
+    setState(() {
+      _motifInFlight = false;
+      _audioError = error;
+      // Don't strand the learner on a card whose audio keeps failing: enable
+      // the options so they can still answer or move on. The banner explains.
+      _enableOptions();
+    });
   }
 
   Future<void> _pick(IntervalSpec option) async {
@@ -281,6 +323,10 @@ class _ActiveExerciseViewState extends ConsumerState<_ActiveExerciseView> {
       return;
     }
     setState(() => _picked = true);
+
+    // Cut any motif still sequencing so the interval audio does not keep
+    // playing under the result line.
+    _player.stop().ignore();
 
     // Reaction time from the first playback finishing to this tap; replays do
     // not reset [_enabledAt]. The clamp defends against a tap on the same tick
