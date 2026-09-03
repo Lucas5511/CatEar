@@ -29,6 +29,10 @@ dependencies:
   # Audio — pinned by Epic 1 stack (not used in this story)
   record: 7.1.1
   just_audio: 0.10.6
+  # Already in the tree as a just_audio transitive dep; promoted to direct
+  # because lib/audio/ configures the session itself (iOS needs the category
+  # set before play() or playback is silent / mixes wrong).
+  audio_session: 0.2.4
 
   uuid: ^4.0.0
 
