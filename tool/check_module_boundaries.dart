@@ -100,16 +100,19 @@ void main(List<String> args) {
 
       // Rule 4: platform audio packages stay under lib/audio/ (AR-6). Checked
       // on the raw uri — _resolveTarget returns null for external packages.
-      // Matches `just_audio` / `record` and their sibling packages
-      // (`just_audio_background`, `record_platform_interface`, …) but not an
-      // unrelated name that merely starts with the same letters (`recorder`).
+      // Matches `just_audio` / `record` / `audio_session` and their sibling
+      // packages (`just_audio_background`, `record_platform_interface`, …) but
+      // not an unrelated name that merely starts with the same letters
+      // (`recorder`).
       final pkgName = RegExp(r'^package:([^/]+)/').firstMatch(uri)?.group(1);
       final referencesPlatformAudio =
           pkgName != null &&
           (pkgName == 'just_audio' ||
               pkgName == 'record' ||
+              pkgName == 'audio_session' ||
               pkgName.startsWith('just_audio_') ||
-              pkgName.startsWith('record_'));
+              pkgName.startsWith('record_') ||
+              pkgName.startsWith('audio_session_'));
       if (referencesPlatformAudio && owningModule != 'audio') {
         violations.add(
           '$libRelative:$line: imports/exports platform audio package '

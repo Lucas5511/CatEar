@@ -12,8 +12,9 @@
 //   - practice flow (Story 1.4): the "Praticar" journey over the REAL provider
 //     graph — the widget suite fakes `audioServiceProvider`, so this is the
 //     only place the real `_JustAudioService` and its lifecycle are exercised
-//   - AudioService (Stories 1.3 / 1.3b): real playback, missing samples,
-//     interruption under overlapping calls, dispose
+//   - AudioService (Stories 1.3 / 1.3b): the shared contract suite run against
+//     the real `_JustAudioService`, plus the provider-wiring case that only
+//     exists on this side
 //
 // The database is overridden with an in-memory Drift database so the suite runs
 // both headless and on-device; everything else is the real provider graph.
@@ -29,6 +30,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+
+// Both suites run the SAME AudioService contract: this one against the real
+// `_JustAudioService`, `test/audio_service_test.dart` against the fake. Keeping
+// them in one file is the point — the fake used to be stronger than the real
+// service (it serialized overlapping calls; the real one did not), so the unit
+// suite was green while the exercise played no audio at all.
+import '../test/support/audio_service_contract.dart';
 
 // ---------------------------------------------------------------- app shell
 
@@ -69,6 +77,38 @@ Brightness activeBrightness(WidgetTester tester) =>
 /// ~2.5 s; if the emulator's audio sink never signals completion the job should
 /// fail fast here, not hang until the CI timeout.
 const _playTimeout = Duration(seconds: 15);
+
+/// A container whose `audioServiceProvider` is the real (unoverridden) service,
+/// kept alive by a live subscription so the auto-dispose provider is not torn
+/// down before the test drives it.
+///
+/// Registers tear-downs for both the subscription and the container. The
+/// container tear-down is guarded so a test that disposes the container itself
+/// (or an `expect` that throws before it does) never leaks the underlying
+/// `AudioPlayer` platform resource.
+({ProviderContainer container, AudioService service}) realService() {
+  final container = ProviderContainer();
+  final sub = container.listen(
+    audioServiceProvider,
+    (_, _) {},
+    fireImmediately: true,
+  );
+  addTearDown(() {
+    try {
+      sub.close();
+    } catch (_) {
+      // Container already disposed — the subscription went with it.
+    }
+  });
+  addTearDown(() {
+    try {
+      container.dispose();
+    } on StateError {
+      // A test disposed the container on purpose; a second call is a no-op.
+    }
+  });
+  return (container: container, service: sub.read());
+}
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -293,125 +333,20 @@ void main() {
     });
   });
 
-  group('real AudioService', () {
-    /// A container whose `audioServiceProvider` is the real (unoverridden)
-    /// service, kept alive by a live subscription so the auto-dispose provider is
-    /// not torn down before the test drives it.
-    ///
-    /// Registers tear-downs for both the subscription and the container. The
-    /// container tear-down is guarded so a test that disposes the container
-    /// itself (or an `expect` that throws before it does) never leaks the
-    /// underlying `AudioPlayer` platform resource.
-    ({ProviderContainer container, AudioService service}) realService() {
-      final container = ProviderContainer();
-      final sub = container.listen(
-        audioServiceProvider,
-        (_, _) {},
-        fireImmediately: true,
-      );
-      addTearDown(() {
-        try {
-          sub.close();
-        } catch (_) {
-          // Container already disposed — the subscription went with it.
-        }
-      });
-      addTearDown(() {
-        try {
-          container.dispose();
-        } on StateError {
-          // A test disposed the container on purpose; a second call is a no-op.
-        }
-      });
-      return (container: container, service: sub.read());
-    }
+  // The full AudioService contract, against the real service. Anything that is
+  // true of both implementations lives in the shared file, not here.
+  runAudioServiceContract(
+    target: 'real _JustAudioService',
+    build: () => realService().service,
+    timeout: _playTimeout,
+  );
 
-    testWidgets('playSample of a bundled sample completes without error', (
-      tester,
-    ) async {
-      final (container: _, :service) = realService();
-
-      expect(service, isA<AudioService>());
-      await service.playSample('sax_c4').timeout(_playTimeout);
-      // A second call (replay) also completes — interrupts the previous one.
-      await service.playSample('sax_c4').timeout(_playTimeout);
-    });
-
-    testWidgets(
-      'playSample of a well-formed token with no asset -> SamplePlaybackFailed',
-      (tester) async {
-        final (container: _, :service) = realService();
-
-        // `sax_zz9` matches ^[a-z0-9_]+$ so `audioAssetKeyFor` accepts it, but no
-        // such file is bundled -> `setAsset` throws a FlutterError inside
-        // `just_audio`. It must surface as a domain error, never a raw
-        // FlutterError / PlayerException / PlatformException.
-        await expectLater(
-          service.playSample('sax_zz9').timeout(_playTimeout),
-          throwsA(
-            isA<SamplePlaybackFailed>()
-                .having((e) => e.ref, 'ref', 'sax_zz9')
-                .having((e) => e, 'is AudioError', isA<AudioError>()),
-          ),
-        );
-
-        // The service is still usable after a handled failure.
-        await service.playSample('sax_d4').timeout(_playTimeout);
-      },
-    );
-
-    testWidgets(
-      'overlapping playSample calls interrupt cleanly, without a spurious error',
-      (tester) async {
-        final (:container, :service) = realService();
-        addTearDown(container.dispose);
-
-        // The Story 1.4 phrase player shortens notes by firing the next sample
-        // before the previous one finished — the interface promises "interrupts
-        // any sample still playing". Fired faster than a load can complete, an
-        // unserialized implementation races `setAsset`/`play` on one AudioPlayer
-        // and reports the aborted load as `SamplePlaybackFailed`.
-        final first = service.playSample('sax_c4');
-        await Future<void>.delayed(const Duration(milliseconds: 30));
-        final second = service.playSample('sax_e4');
-        await Future<void>.delayed(const Duration(milliseconds: 30));
-        final third = service.playSample('sax_g4');
-
-        await Future.wait([first, second, third])
-            .timeout(const Duration(seconds: 15));
-
-        // Still usable afterwards.
-        await service.playSample('sax_c4').timeout(const Duration(seconds: 15));
-      },
-    );
-
-    testWidgets(
-      'a missing sample still reports failure when other calls are in flight',
-      (tester) async {
-        final (container: _, :service) = realService();
-
-        // Both halves of the contract at once. Interruption is matched on
-        // `PlayerInterruptedException`, never on "a newer call superseded me" —
-        // otherwise a real failure landing after supersession would be swallowed
-        // and the card would go silent with no error and no banner.
-        //
-        // Start a real sample, then ask for a missing one while it plays:
-        // - the missing request is current, so its failure must surface;
-        // - the sample it cut short was interrupted, so it must complete quietly.
-        final playing = service.playSample('sax_c4');
-        await Future<void>.delayed(const Duration(milliseconds: 100));
-        final missing = service.playSample('sax_zz9');
-
-        await expectLater(
-          missing.timeout(_playTimeout),
-          throwsA(
-            isA<SamplePlaybackFailed>().having((e) => e.ref, 'ref', 'sax_zz9'),
-          ),
-        );
-        await playing.timeout(_playTimeout);
-      },
-    );
-
+  group('real AudioService — provider wiring', () {
+    // The one case the fake cannot answer: `audioServiceProvider` is
+    // auto-dispose and wires `ref.onDispose(service.dispose)`, so tearing the
+    // container down must release the platform `AudioPlayer`. (The mirror of
+    // this on the widget side — the screen holding the provider open for its
+    // lifetime — is `test/exercicios/audio_lifecycle_test.dart`.)
     testWidgets(
       'disposing the container disposes the service, without throwing',
       (tester) async {
@@ -419,9 +354,9 @@ void main() {
 
         await service.playSample('sax_g4').timeout(_playTimeout);
 
-        // `audioServiceProvider` wires `ref.onDispose(service.dispose)`. The async
-        // work of `_JustAudioService.dispose()` runs after this returns; the
-        // post-dispose `StateError` assertions below are what prove it ran.
+        // The async work of `_JustAudioService.dispose()` runs after this
+        // returns; the post-dispose `StateError` assertions below are what
+        // prove it ran.
         container.dispose();
 
         await expectLater(

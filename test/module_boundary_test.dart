@@ -81,11 +81,14 @@ void main() {
     expect(r.stderr.toString(), contains('database internals'));
   });
 
-  test('just_audio / record imports inside lib/audio/ pass (Rule 4)', () async {
+  test('just_audio / record / audio_session imports inside lib/audio/ pass '
+      '(Rule 4)', () async {
     write('lib/core/core.dart', 'library;\n');
     write(
       'lib/audio/data/audio_service_impl.dart',
-      "import 'package:just_audio/just_audio.dart';\nvoid f() {}\n",
+      "import 'package:just_audio/just_audio.dart';\n"
+          "import 'package:audio_session/audio_session.dart';\n"
+          'void f() {}\n',
     );
     write(
       'lib/audio/data/voice_capture.dart',
@@ -94,6 +97,21 @@ void main() {
 
     final r = await run();
     expect(r.exitCode, 0, reason: '${r.stdout}${r.stderr}');
+  });
+
+  test('audio_session import outside lib/audio/ fails (Rule 4)', () async {
+    // The session is a platform audio concern: only lib/audio/ may name it,
+    // same as just_audio and record.
+    write('lib/core/core.dart', 'library;\n');
+    write(
+      'lib/exercicios/data/session.dart',
+      "import 'package:audio_session/audio_session.dart';\nvoid f() {}\n",
+    );
+
+    final r = await run();
+    expect(r.exitCode, isNot(0));
+    expect(r.stderr.toString(), contains('exercicios/data/session.dart'));
+    expect(r.stderr.toString(), contains('platform audio package'));
   });
 
   test('just_audio import outside lib/audio/ fails (Rule 4)', () async {

@@ -51,15 +51,17 @@ ProviderContainer _container({FakeAudioService? audio, Object? catalogError}) {
   );
 }
 
+/// [home] is swappable so a test can leave the exercise screen the way the app
+/// does — popping what is on screen while the `ProviderScope` stays mounted.
+/// Unmounting the scope instead unbinds the container's vsync, and any
+/// auto-dispose it schedules is never flushed.
 Widget _app(
   ProviderContainer container, {
   Brightness brightness = Brightness.light,
+  Widget home = const IntervalExerciseScreen(),
 }) => UncontrolledProviderScope(
   container: container,
-  child: MaterialApp(
-    theme: appTheme(brightness),
-    home: const IntervalExerciseScreen(),
-  ),
+  child: MaterialApp(theme: appTheme(brightness), home: home),
 );
 
 /// Motif gap total: 450 + 450 + 900 ms.
@@ -525,6 +527,39 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('and releases it exactly once when the screen goes away', (
+    tester,
+  ) async {
+    // The other half of the lifetime contract. Holding the provider open for
+    // the screen is only correct if letting go is too: a subscription that
+    // outlives the screen would keep a real `AudioPlayer` — and its platform
+    // resources — alive behind an exercise nobody is looking at.
+    final fake = FakeAudioService();
+    final container = ProviderContainer(
+      overrides: [
+        audioServiceProvider.overrideWith((ref) {
+          ref.onDispose(fake.dispose);
+          return fake;
+        }),
+        catalogAssetBundleProvider.overrideWithValue(_RealCatalogBundle()),
+      ],
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester);
+    expect(fake.disposeCount, 0);
+
+    await tester.pumpWidget(_app(container, home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+
+    expect(
+      fake.disposeCount,
+      1,
+      reason: 'held open for the screen, released with it — not leaked',
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'a non-AudioError from playback surfaces the banner, not a raw crash',

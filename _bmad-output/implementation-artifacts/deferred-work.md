@@ -114,7 +114,7 @@ retêm como itens com dono, não follow-up genérico.
   summary: **✅ RESOLVIDO** (2026-09-03, PRs #13 + follow-up). (F3-adjacente) `_JustAudioService.playSample`/`stop` não serializavam chamadas concorrentes: duas chamadas corriam `stop→setAsset→play→stop` no mesmo `AudioPlayer` com ordem indefinida. O primeiro consumidor real (o `PhrasePlayer` da Story 1.4, que sobrepõe chamadas de propósito para encurtar notas) expôs isso quebrando o job `e2e-android`. Agora `_chain` serializa as mutações do player, `stop()` preempta fora da fila, e a interrupção é reconhecida por `PlayerInterruptedException` (não por generation obsoleta, que engoliria falhas reais).
   evidence: `lib/audio/data/audio_service_impl.dart` — `_chain` + `_predecessorWait` + guarda `PlayerInterruptedException`; regressão em `integration_test/audio_service_test.dart` ("overlapping playSample calls interrupt cleanly" e "a missing sample still reports failure when other calls are in flight").
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-3-audioservice-com-reproducao-e-fakeaudioservice.md`
-  summary: `_JustAudioService` não configura `AudioSession`/categoria de sessão de áudio do `just_audio`. No iOS a reprodução costuma exigir a sessão configurada antes de `play()` ou fica silenciosa / mistura errado. Configurar (ou registrar a decisão) quando a Story 1.4 rodar o app. owner: dev da 1.4.
+  summary: **✅ RESOLVIDO** (2026-09-03). `_JustAudioService` não configurava `AudioSession`/categoria de sessão de áudio; no iOS a reprodução exige a sessão configurada antes de `play()` ou fica silenciosa / mistura errado. Agora o construtor dispara `AudioSession.instance.configure(AudioSessionConfiguration.music())` e `_playSerialized` aguarda esse future antes do primeiro `setAsset`. `music()` mantém o som com a chave de silêncio ligada e toma o foco em vez de duckar — uma amostra que a aluna tem de identificar não pode vir misturada. Configuração é best-effort (mesmo guard de `_quietStop`/`dispose`): uma falha de sessão não vira erro de reprodução no Android, que não precisa dela. **Ainda não verificado em device iOS** — nenhum job de CI consegue; o `build-ios` prova só compilação, e o `e2e-android` prova que configurar a sessão não regride o Android.
   evidence: `lib/audio/data/audio_service_impl.dart` — só `AudioPlayer()`, sem `AudioSession.instance.configure(...)`.
 
 ## Resolução na story 1.3b (2026-09-02)
@@ -160,7 +160,9 @@ retêm como itens com dono, não follow-up genérico.
   **ausente**, que sai como `FlutterError` (um `Error`), não como `Exception`. O
   ramo `e is Exception` do `catch` fica sem teste de plataforma. Cobrir quando
   houver um fixture de `.wav` deliberadamente corrompido carregado de fora de
-  `assets/` (ou um `AudioSource` mock). owner: dev da 1.4.
+  `assets/` (ou um `AudioSource` mock). **Re-triado 2026-09-03** de
+  `owner: dev da 1.4` (encerrada sem executá-lo) para a próxima story que
+  mexe no consumidor de áudio. owner: dev da 1.5.
   evidence: `lib/audio/data/audio_service_impl.dart` — `catch (e) { if (e is! Exception && e is! FlutterError) rethrow; … }`; só o ramo `FlutterError` é exercido pelo teste de integração.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-3b-producao-do-conjunto-de-amostras-de-audio-da-v1.md`
   summary: `_JustAudioService.playSample` com `ref` malformado propaga o
@@ -168,9 +170,10 @@ retêm como itens com dono, não follow-up genérico.
   `catch` o rethrow como erro de programação. Isso contraria o doc-comment de
   `audio_service.dart` ("Every failure surfaces as an AudioError"). Hoje o único
   chamador seria o próprio app com tokens do catálogo (sempre bem-formados), mas
-  a Story 1.4 deve decidir: `playSample` embrulha `ArgumentError` em
-  `SamplePlaybackFailed`, ou "ref malformado" é contrato-quebrado do chamador
-  (e o doc-comment é ajustado para dizer isso). owner: dev da 1.4.
+  a story que herdar isto deve decidir: `playSample` embrulha `ArgumentError`
+  em `SamplePlaybackFailed`, ou "ref malformado" é contrato-quebrado do
+  chamador (e o doc-comment é ajustado para dizer isso). **Re-triado
+  2026-09-03** de `owner: dev da 1.4` (encerrada sem decidir). owner: dev da 1.5.
   evidence: `lib/audio/domain/audio_assets.dart` — `audioAssetKeyFor` lança `ArgumentError`; `_JustAudioService.playSample` chama-o dentro do `try` mas o guard `e is! Exception` deixa `ArgumentError` (que é `Error`) subir cru.
 
 ## Deferred da review adversarial de spec-1-4 (2026-09-02)
@@ -283,8 +286,33 @@ Guarda de regressão: `integration_test/audio_service_test.dart` —
 "overlapping playSample calls interrupt cleanly, without a spurious error".
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-3-audioservice-com-reproducao-e-fakeaudioservice.md`
-  summary: `AudioSession`/categoria de sessão de áudio do iOS **continua aberto**
-  (o outro item com dono "dev da 1.4"). Nada nesta correção o cobre; o Android
-  não precisa, o iOS provavelmente sim antes de rodar em device.
-  evidence: `lib/audio/data/audio_service_impl.dart` — só `AudioPlayer()`, sem
-  `AudioSession.instance.configure(...)`.
+  summary: **✅ RESOLVIDO** (2026-09-03, junto das chores de qualidade).
+  `AudioSession`/categoria de sessão de áudio do iOS — o outro item que a Story
+  1.4 herdou e não executou. Ver o bloco resolvido acima; `audio_session` virou
+  dependência direta (0.2.4, já estava na árvore via `just_audio`) e entrou na
+  Regra 4 do `check_module_boundaries` para não vazar de `lib/audio/`.
+  evidence: `lib/audio/data/audio_service_impl.dart` — `_sessionReady` +
+  `_configureSession()`; `tool/check_module_boundaries.dart` Regra 4;
+  `test/module_boundary_test.dart` ("audio_session import outside lib/audio/
+  fails").
+
+## Triagem de owners (2026-09-03) — `tool/check_deferred_owners.dart`
+
+O gate `deferred owners` entrou no `tool/ci.sh` nesta data. Ele falha o build
+quando um bloco **não resolvido** deste arquivo carrega `owner: dev da X` e a
+story X está `in-progress`/`review` no `sprint-status.yaml`. É a versão
+executável do action item S2 — a Story 1.3 deferiu dois itens com
+`owner: dev da 1.4` por escrito, a 1.4 passou por spec, implementação, review e
+merge sem tocar em nenhum, e um deles derrubou o `e2e-android`.
+
+Na primeira execução o gate acusou **três** itens com `owner: dev da 1.4` (a
+story ainda em `review`) — um a mais do que a retro tinha contado. Triagem:
+
+| Item | Antes | Depois | Razão |
+|---|---|---|---|
+| `AudioSession` do iOS | `dev da 1.4` | — **executado no mesmo dia** | Foi re-triado para `dev, antes do primeiro device iOS` e então implementado, em vez de sobreviver a mais uma story. |
+| Ramo `e is Exception` do `catch` sem teste de plataforma (`.wav` corrompido) | `dev da 1.4` | `dev da 1.5` | Cobertura do serviço de áudio; vai junto da próxima story que mexe no consumidor. |
+| Contrato de `ref` malformado (`ArgumentError` cru vs `SamplePlaybackFailed`) | `dev da 1.4` | `dev da 1.5` | Decisão de contrato que a 1.4 devia ter tomado e não tomou; a 1.5 reusa o mesmo caminho. |
+
+Re-triar com a razão registrada é a saída legítima do gate. Apagar a tag não é —
+e o gate não sabe distinguir, então isso fica como acordo, não como código.

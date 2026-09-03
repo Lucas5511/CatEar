@@ -28,6 +28,7 @@ step "analyze"            flutter analyze
 step "module boundaries"  dart run tool/check_module_boundaries.dart
 step "app id"             dart run tool/check_app_id.dart
 step "curriculum"         dart run tool/check_curriculum.dart
+step "deferred owners"    dart run tool/check_deferred_owners.dart
 step "test"               flutter test
 
 echo ""

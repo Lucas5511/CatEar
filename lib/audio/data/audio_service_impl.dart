@@ -8,6 +8,7 @@ library;
 
 import 'dart:async';
 
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart' show FlutterError;
 import 'package:just_audio/just_audio.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -29,10 +30,41 @@ AudioService audioService(Ref ref) {
 /// Wraps a single [AudioPlayer]. Not unit-tested — it runs against the
 /// platform; a post-1.3b integration test exercises it (see `deferred-work.md`).
 class _JustAudioService implements AudioService {
-  _JustAudioService();
+  _JustAudioService() : _sessionReady = _configureSession();
 
   final AudioPlayer _player = AudioPlayer();
   bool _disposed = false;
+
+  /// Completes once the platform audio session has been configured (or once
+  /// configuring it has failed — see [_configureSession]). Awaited before the
+  /// first `play()`.
+  ///
+  /// iOS will not play through a session whose category was never set: the
+  /// notes come out silent, or duck/mix against whatever else is playing.
+  /// Android does not need this, which is exactly why it went unnoticed —
+  /// `e2e-android` is green either way, and no CI job can see the iOS half.
+  final Future<void> _sessionReady;
+
+  /// Declares this app as a music player to the platform: playback continues
+  /// with the silent switch on (an ear-training app that goes quiet when the
+  /// phone is on silent is broken), and it takes the audio focus rather than
+  /// ducking under it — a training sample the learner has to identify must not
+  /// be mixed with anything.
+  ///
+  /// Best-effort, and deliberately non-fatal: a session failure must not turn
+  /// into a playback error on Android, which needs none of this. Same guard as
+  /// [_quietStop] / [dispose] — a genuine programming error still surfaces.
+  static Future<void> _configureSession() async {
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration.music());
+    } catch (e) {
+      if (e is! Exception && e is! FlutterError) rethrow;
+      // Swallowed: playback is still attempted. On Android it will work
+      // anyway; on iOS the failure shows up as silence, which is the state we
+      // were already in before this call existed.
+    }
+  }
 
   /// Bumped by every [playSample] / [stop] / [dispose]. An operation whose
   /// generation is stale was superseded mid-flight and abandons its remaining
@@ -89,6 +121,9 @@ class _JustAudioService implements AudioService {
   }
 
   Future<void> _playSerialized(String ref, int generation) async {
+    if (_disposed || generation != _generation) return;
+    // Cheap after the first call — the future is already complete.
+    await _sessionReady;
     if (_disposed || generation != _generation) return;
     try {
       await _player.setAsset(audioAssetKeyFor(ref));
