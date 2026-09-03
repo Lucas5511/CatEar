@@ -5,11 +5,19 @@ on:
     branches: [master]
   pull_request:
 
+# A new push to a PR supersedes the previous run. Master is never cancelled —
+# its runs are the record of what actually landed.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  # Format, analyze, module/curriculum/app-id gates, and the unit + widget suite
-  # (test/) — including the Drift migration-safety harness (test/migration_test.dart).
+  # Format, analyze, module/curriculum/app-id/deferred-owner gates, and the unit
+  # + widget suite (test/) — including the Drift migration-safety harness
+  # (test/migration_test.dart).
   gates:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -26,6 +34,7 @@ jobs:
   # stops at `flutter test`; nothing there catches a broken native build.
   build-android:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -39,16 +48,70 @@ jobs:
           flutter-version: 3.47.x
           channel: stable
           cache: true
+
+      # Most of the ~8 min Gradle build is dependency resolution, not
+      # compilation. Caching it is the single biggest lever on this job and on
+      # `e2e-android`, which pays the same cost.
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties', 'pubspec.lock') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
 
       - run: flutter pub get
       - run: dart run build_runner build --delete-conflicting-outputs
       - name: Build debug APK
         run: flutter build apk --debug
 
+  # R1 (iOS half) — the Android build gate says nothing about the iOS target.
+  # This is also the only signal we have on the iOS audio session work
+  # (deferred-work.md, `AudioSession` item): a compile gate does not prove
+  # playback, but it does stop the iOS target rotting silently between device
+  # runs. macOS runners bill at 10x, so this is a build smoke only — no tests.
+  build-ios:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.x
+          channel: stable
+          cache: true
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: |
+            ios/Pods
+            ~/Library/Caches/CocoaPods
+          key: pods-${{ runner.os }}-${{ hashFiles('ios/Podfile.lock', 'pubspec.lock') }}
+          restore-keys: |
+            pods-${{ runner.os }}-
+
+      - run: flutter pub get
+      - run: dart run build_runner build --delete-conflicting-outputs
+      - name: Build iOS (no codesign)
+        run: flutter build ios --debug --no-codesign
+
   # R3 — run the integration_test/ E2E suite on a real Android emulator.
   # The main `flutter test` run never touches integration_test/.
+  #
+  # This job has been the pipeline's weak point: every failure that reached
+  # master through it was infrastructure (a hung QEMU main loop, a reclaimed
+  # runner), never the code under test. Three levers, in order of effect:
+  #   1. a cached AVD snapshot, so the emulator boots warm instead of cold;
+  #   2. the Gradle cache shared with `build-android`;
+  #   3. an explicit timeout, so a wedged emulator fails in 45 min instead of
+  #      burning the 6 h GitHub default.
   e2e-android:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -62,6 +125,16 @@ jobs:
           flutter-version: 3.47.x
           channel: stable
           cache: true
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties', 'pubspec.lock') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
 
       - run: flutter pub get
       - run: dart run build_runner build --delete-conflicting-outputs
@@ -72,10 +145,36 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      - name: Cache AVD snapshot
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-api35-pixel6-x86_64
+
+      # Cold boot on a cache miss, saving a snapshot the run below (and every
+      # later run) restores. This is the step the two QEMU hangs died in.
+      - name: Create AVD snapshot
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: echo "AVD snapshot generated"
+
       - name: Integration tests on emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
           arch: x86_64
           profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
           script: flutter test integration_test
