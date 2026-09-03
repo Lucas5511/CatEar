@@ -111,7 +111,7 @@ retêm como itens com dono, não follow-up genérico.
   chave. owner: dev da 1.3b.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-3-audioservice-com-reproducao-e-fakeaudioservice.md`
-  summary: (F3-adjacente, ainda aberto) `_JustAudioService.playSample`/`stop` não serializam chamadas concorrentes. O contrato "interrompe qualquer amostra ainda tocando" vale para chamadas sequenciais aguardadas (o `stop()` de entrada cobre), mas duas chamadas concorrentes correm `stop→setAsset→play→stop` no mesmo `AudioPlayer` com ordem indefinida. Endurecer (serializar via fila de operação, ou documentar a premissa de chamador único) quando existir um consumidor real (Stories 1.4+). O `FakeAudioService` já serializa (última chamada vence), então o contrato de consumidor está testável; a lacuna é só na impl real. owner: dev da 1.4.
+  summary: **✅ RESOLVIDO (2026-09-03, `fix/audio-serialize-concurrent-playback`).** (F3-adjacente) `_JustAudioService.playSample`/`stop` não serializavam chamadas concorrentes. O contrato "interrompe qualquer amostra ainda tocando" vale para chamadas sequenciais aguardadas (o `stop()` de entrada cobre), mas duas chamadas concorrentes correm `stop→setAsset→play→stop` no mesmo `AudioPlayer` com ordem indefinida. Endurecer (serializar via fila de operação, ou documentar a premissa de chamador único) quando existir um consumidor real (Stories 1.4+). O `FakeAudioService` já serializa (última chamada vence), então o contrato de consumidor está testável; a lacuna é só na impl real. owner: dev da 1.4.
   evidence: `lib/audio/data/audio_service_impl.dart` — `playSample` sem guarda de concorrência; `_player` compartilhado.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-3-audioservice-com-reproducao-e-fakeaudioservice.md`
   summary: `_JustAudioService` não configura `AudioSession`/categoria de sessão de áudio do `just_audio`. No iOS a reprodução costuma exigir a sessão configurada antes de `play()` ou fica silenciosa / mistura errado. Configurar (ou registrar a decisão) quando a Story 1.4 rodar o app. owner: dev da 1.4.
@@ -256,3 +256,35 @@ mostrados como "temporário". Itens abaixo ficam para stories futuras.
   intervalo sem `ErrorType` correspondente. Um mapa const validado por teste
   sobre o catálogo, ou `ErrorType.forIntervalId` checado, fecharia isso.
   evidence: `lib/exercicios/domain/exercise_attempt.dart`.
+
+## Resolução do item de concorrência da 1.3 (2026-09-03)
+
+O e2e do fluxo de prática (adicionado na PR #12) derrubou o CI no merge e expôs
+o item que a Story 1.3 deferiu com dono "dev da 1.4" e nunca foi executado:
+`_JustAudioService` não serializava chamadas concorrentes. O `PhrasePlayer` da
+1.4 dispara `playSample` sobrepostos **de propósito** (é assim que encurta as
+notas), então o primeiro consumidor real é justamente quem viola a premissa de
+chamador único.
+
+Duas causas, ambas necessárias:
+1. Duas execuções de `setAsset → play → stop` corriam no mesmo `AudioPlayer` com
+   ordem indefinida. Agora `_chain` serializa as mutações; só o `stop()` fica
+   fora da fila, porque precisa poder preemptar um `play()` em andamento.
+2. Quando esse `stop()` preemptivo abortava um `setAsset` em andamento, o
+   `just_audio` lançava e nós traduzíamos em `SamplePlaybackFailed` — reportando
+   uma **interrupção intencional** (que o contrato promete) como falha. Agora um
+   erro cuja `generation` está obsoleta é engolido.
+
+Reprodução determinística: encurtando os gaps do motivo para 40/80 ms (o que o
+runner de 2 cores do CI produz na prática, já que o `setAsset` não termina dentro
+dos 450 ms) o e2e falha no baseline, falha só com (1), e passa com (1)+(2).
+
+Guarda de regressão: `integration_test/audio_service_test.dart` —
+"overlapping playSample calls interrupt cleanly, without a spurious error".
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-3-audioservice-com-reproducao-e-fakeaudioservice.md`
+  summary: `AudioSession`/categoria de sessão de áudio do iOS **continua aberto**
+  (o outro item com dono "dev da 1.4"). Nada nesta correção o cobre; o Android
+  não precisa, o iOS provavelmente sim antes de rodar em device.
+  evidence: `lib/audio/data/audio_service_impl.dart` — só `AudioPlayer()`, sem
+  `AudioSession.instance.configure(...)`.

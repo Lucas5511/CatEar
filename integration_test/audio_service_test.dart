@@ -88,6 +88,31 @@ void main() {
     },
   );
 
+  testWidgets(
+    'overlapping playSample calls interrupt cleanly, without a spurious error',
+    (tester) async {
+      final (:container, :service) = realService();
+      addTearDown(container.dispose);
+
+      // The Story 1.4 phrase player shortens notes by firing the next sample
+      // before the previous one finished — the interface promises "interrupts
+      // any sample still playing". Fired faster than a load can complete, an
+      // unserialized implementation races `setAsset`/`play` on one AudioPlayer
+      // and reports the aborted load as `SamplePlaybackFailed`.
+      final first = service.playSample('sax_c4');
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      final second = service.playSample('sax_e4');
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      final third = service.playSample('sax_g4');
+
+      await Future.wait([first, second, third])
+          .timeout(const Duration(seconds: 15));
+
+      // Still usable afterwards.
+      await service.playSample('sax_c4').timeout(const Duration(seconds: 15));
+    },
+  );
+
   testWidgets('disposing the container disposes the service, without throwing', (
     tester,
   ) async {
