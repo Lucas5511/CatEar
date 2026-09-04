@@ -9,6 +9,7 @@ context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-1-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/spec-1-3b-producao-do-conjunto-de-amostras-de-audio-da-v1.md'
   - '{project-root}/_bmad-output/test-artifacts/atdd-preflight-1-5.md'
+  - '{project-root}/_bmad-output/test-artifacts/session-c1-ouvir-o-app-2026-09-04.md'
 ---
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
@@ -42,6 +43,8 @@ context:
 
 - **Derivação, não sourcing.** As três vozes de cada tríade já estão em `assets/audio/`. Mixar com `ffmpeg amix`, mesma fonte (Iowa MIS, AltoSax NoVib ff), mesma licença já documentada. Nenhum AIFF novo entra no repo.
 - **Formato idêntico às 14 existentes:** WAV PCM 16-bit, mono, 44,1 kHz, ≤ 2,5 s, com o mesmo alvo de loudness EBU R128 (`I=-16 / TP=-1.5 / LRA=11`) aplicado **depois** da mixagem — somar três vozes eleva o loudness, e uma tríade mais alta que uma nota isolada é um viés no exercício.
+- **Alinhamento de ataque — todas as 22 amostras, não só as 8 novas.** Cada `.wav` começa com no máximo **20 ms** antes do ataque. Hoje as 14 existentes têm **180–320 ms** de ar morto (sessão C1, achado A-2), e o `PhrasePlayer` dispara notas a cada 450 ms: cada nota soa por 130–270 ms em vez de 450, e o spread de 140 ms entre amostras faz o ritmo do motif variar conforme quais notas o exercício sorteia. Cortar o silêncio inicial preservando o transiente (~10 ms de pré-ataque) é requisito desta story, e obriga a **rerenderizar as 14 existentes** junto das 8 novas.
+- **Loudness verificado, não presumido.** As 14 atuais estão em **I = -19,0 LUFS** contra os `-16` que a spec-1-3b declarou como AC (achado A-3). A rerenderização acerta o alvo e o resultado é **medido** por amostra, não assumido a partir dos parâmetros do filtro.
 - **`audioSampleRefs` de um exercício de acorde = `[<tríade>, <raiz>, <terça>, <quinta>]`** — o bloco primeiro, as três notas depois. A 1.5 monta o contexto musical (bloco → arpejo → bloco) sem asset novo; um consumidor que só leia o primeiro ref toca o bloco e degrada corretamente.
 - **Expansão dos catálogos:**
   - `chordCatalog` += `diminished` (`intervals: [3, 6]`), `augmented` (`intervals: [4, 8]`) — ambos já existiam em `errorTypes` sem entrada correspondente.
@@ -49,12 +52,13 @@ context:
   - `errorTypes` += `altered-third`, `altered-sixth`, `altered-seventh`.
 - **Exercícios adicionados:** `s-acordes` vai de 2 para **8** (as 8 tríades do manifesto); `s-escalas` vai de 4 para **8** (dórica e mixolídia, `asc` e `desc`, sobre C4).
 - **`ErrorType` estendido** em `lib/curriculo/domain/enums.dart` com `alteredThird('altered-third')`, `alteredSixth('altered-sixth')`, `alteredSeventh('altered-seventh')`. É mudança de `lib/`, declarada aqui de propósito: `ErrorType.fromJson` valida `errorTypes` contra a enum, então catálogo e enum sobem juntos ou o build gate reprova.
-- **`test/audio_assets_bundle_test.dart` atualizado**: o manifesto congelado passa de 14 para 22 tokens. A assertiva de "sem órfão" é derivada do catálogo e se ajusta sozinha; a lista congelada, não.
+- **`test/audio_assets_bundle_test.dart` atualizado**: o manifesto congelado passa de 14 para 22 tokens (a assertiva de "sem órfão" é derivada do catálogo e se ajusta sozinha; a lista congelada, não) **e passa a olhar o conteúdo PCM, não só o cabeçalho RIFF**: onset ≤ 20 ms, pico com folga, e RMS dentro de uma faixa comum a todas as amostras. Hoje o teste lê `audioFormat`/`numChannels`/`sampleRate`/`bitsPerSample`/tamanho do `data` e nada mais — foi por isso que 320 ms de silêncio, 3 dB fora do alvo de loudness e ruído de sopro passaram em todos os critérios. Os bytes já estão carregados; falta olhá-los.
 - **Proveniência:** `docs/audio/samples-v1.md` ganha uma seção de segunda derivação — a receita de mixagem exata, a tabela tríade → vozes, e a nota de que a licença é a mesma (derivado de material já derivado da mesma fonte).
 
 **Ask First:**
 
 - **Número de exercícios de acorde e escolha das raízes.** 4 qualidades × 2 raízes (C4, D4) é a recomendação da TEA: mantém `s-acordes` na faixa dos outros estágios (2–4 hoje, 8 aqui é o maior), cobre as 4 qualidades e quebra o atalho de altura absoluta. As 14 notas suportam **20** tríades (5 raízes: C4, Db4, D4, Eb4, E4) se a Curadoria quiser mais. Decisão de currículo, não de teste.
+- **Dinâmica da fonte: manter `ff` ou trocar para `mf`.** A sessão C1 relatou chiado; a medição mostrou ruído de sopro banda-larga 33 dB abaixo do tom (> 8 kHz a -51,3 dBFS), típico de sax em *fortissimo*. Iowa MIS oferece **pp, mf e ff** — mesma fonte, mesma licença, mesma receita. **Decisão pendente do A/B** (`pw-play assets/audio/sax_c4.wav` no host vs. no app): se o chiado sumir fora do emulador, a causa é a cadeia de reprodução e nada muda. Se trocar, as 22 amostras vêm de uma fonte nova e o alinhamento de ataque sai na mesma passagem.
 - **Nomes dos `errorTypes` de escala.** `altered-third` / `-sixth` / `-seventh` seguem o estilo kebab-inglês de `octave-error` / `far-miss` e nomeiam o grau alterado — que é a confusão real entre os 4 modos (maior×mixolídia = 7ª; dórica×menor = 6ª; dórica×mixolídia = 3ª; o resto é `far-miss`). Taxonomia é da Curadoria de Currículo.
 - Trocar fonte, formato, alvo de loudness, ou o diretório `assets/audio/`.
 - Tornar a mixagem um passo de `tool/ci.sh` (é one-off, como a conversão da 1.3b).
@@ -81,6 +85,9 @@ context:
 | Invariantes de conteúdo | R1/R2/R3 após a expansão | inalteradas — só exercícios foram somados, nenhum `order` / `scaffoldIntensity` / `timbreScaffold` mudou | `check_curriculum` exit 0 |
 | Pool de opções | `chordCatalog` / `scaleCatalog` | 4 entradas cada — 4 alternativas na tela da 1.5 | N/A (consumido pela 1.5) |
 | Reprodução real | `playSample('sax_maj_c4')` no emulador | completa sem erro, soa como tríade simultânea | `SamplePlaybackFailed` se o asset faltar |
+| Alinhamento de ataque | qualquer `assets/audio/*.wav` | primeira amostra PCM acima do limiar em ≤ 20 ms | teste falha nomeando o arquivo e o onset medido |
+| Loudness por amostra | `ebur128` em cada `.wav` | `I` dentro de ±1 LU do alvo, igual entre notas e tríades | verificação registrada no doc de proveniência |
+| Consistência de nível | RMS das 22 amostras | dentro de uma faixa comum; nenhuma destoa | teste falha nomeando a amostra fora da faixa |
 
 </frozen-after-approval>
 
@@ -102,7 +109,10 @@ context:
 
 **Execution:**
 
-- [ ] `assets/audio/sax_{maj,min,dim,aug}_{c4,d4}.wav` -- gerar as 8 tríades pela receita de mixagem (amix das 3 vozes → loudnorm R128 → mono → trim ≤2,5 s → fade-out → PCM 16-bit 44,1 kHz)
+- [ ] `assets/audio/*.wav` -- **rerenderizar as 14 notas existentes** com corte do silêncio inicial (~10 ms de pré-ataque preservado) e o alvo de loudness medido depois
+- [ ] `assets/audio/sax_{maj,min,dim,aug}_{c4,d4}.wav` -- gerar as 8 tríades pela receita de mixagem (amix das 3 vozes → loudnorm R128 → mono → corte de cabeça → trim ≤2,5 s → fade-out → PCM 16-bit 44,1 kHz)
+- [ ] `test/audio_assets_bundle_test.dart` -- somar as assertivas de conteúdo PCM: onset ≤ 20 ms, pico com folga, RMS dentro da faixa comum
+- [ ] `docs/audio/samples-v1.md` -- corrigir a URL da licença (a atual dá 404; a página migrou para `MIS-Pitches-2012/MISEbAltoSaxophone2012.html`) e registrar o loudness medido por amostra
 - [ ] `assets/curriculum/catalog_v1.json` -- `chordCatalog` += diminished/augmented; `scaleCatalog` += dorian/mixolydian; `errorTypes` += altered-third/-sixth/-seventh; `s-acordes` 2→8 exercícios; `s-escalas` 4→8
 - [ ] `lib/curriculo/domain/enums.dart` -- `ErrorType` += `alteredThird` / `alteredSixth` / `alteredSeventh`
 - [ ] `test/audio_assets_bundle_test.dart` -- manifesto congelado 14 → 22 tokens
@@ -112,6 +122,8 @@ context:
 
 **Acceptance Criteria:**
 
+- Given qualquer `assets/audio/*.wav`, then o ataque começa em **≤ 20 ms** — verificado pelo teste, não por inspeção.
+- Given `ebur128` em cada `assets/audio/*.wav`, then o loudness integrado medido está dentro de ±1 LU do alvo, e o valor por amostra está registrado em `docs/audio/samples-v1.md`.
 - Given `flutter test`, then `test/audio_assets_bundle_test.dart` passa com 22 tokens — todo `audioSampleRef` do catálogo tem `.wav` carregável, nenhum órfão, e cada tríade satisfaz PCM/mono/44,1 kHz/16-bit/≤2,5 s como as notas.
 - Given `dart run tool/check_curriculum.dart`, then exit 0 — R1/R2/R3 intactas e todo `errorTypes` resolve na enum.
 - Given `chordCatalog` e `scaleCatalog`, then ambos têm **4** entradas, de modo que a 1.5 consiga montar 4 alternativas para os dois tipos.
@@ -120,6 +132,37 @@ context:
 - Given ouvir `sax_maj_c4` e `sax_c4` em sequência, then não há salto de volume perceptível entre tríade e nota.
 - Given `git status`, then a única mudança em `lib/` é a extensão do `ErrorType` — nada em `lib/exercicios/**` nem em `lib/audio/**`.
 - Given `dart run tool/ci.sh`, then exit 0.
+
+## Spec Change Log
+
+- **2026-09-04 — ampliação do escopo após a sessão exploratória C1 (aprovada pelo humano).**
+  A escuta do app (charter C1, `_bmad-output/test-artifacts/session-c1-ouvir-o-app-2026-09-04.md`)
+  relatou chiado. A medição de follow-up não encontrou distorção nem ruído de
+  gravação — os arquivos têm piso de ruído em -88 dBFS e zero amostras clipadas —
+  mas encontrou **três outros problemas**, dois deles confirmados por medição:
+
+  1. **A-2, confirmado:** toda amostra tem **180–320 ms de silêncio antes do
+     ataque**, com spread de 140 ms entre elas. Contra os 450 ms de gap do
+     `PhrasePlayer`, isso encurta cada nota para 130–270 ms e faz o ritmo do motif
+     variar conforme as notas sorteadas. Causa raiz na regra da spec-1-3b
+     *"ataque preservado (sem cortar o início)"*, que protegeu o transiente e
+     manteve o ar morto junto.
+  2. **A-3, confirmado:** loudness real em **-19,0 LUFS** contra os `-16` que a AC
+     da 1.3b declarou. Passagem única de `loudnorm` errou ~3 dB e nada mediu depois.
+  3. **A-1, pendente:** o chiado é provavelmente ruído de sopro do sax em `ff`
+     (> 8 kHz a -51,3 dBFS, 33 dB abaixo do tom). Fica em **Ask First** até o A/B
+     `pw-play` separar arquivo de cadeia de reprodução.
+
+  **Efeito no escopo congelado:** a story deixa de produzir só 8 tríades e passa a
+  **rerenderizar as 22 amostras**, porque o corte de cabeça e o alvo de loudness
+  valem para as 14 existentes também. É a mesma passagem de `ffmpeg`, mas é
+  escopo maior e está declarado aqui em vez de aparecer na implementação.
+
+  **Por que aqui e não numa story nova:** esta é a única story do backlog que já
+  ia tocar no pipeline de áudio e no `audio_assets_bundle_test.dart`. Abrir uma
+  segunda story de produção sobre os mesmos arquivos criaria dois PRs mexendo no
+  mesmo conjunto de assets — exatamente o padrão que a retro de 2026-09-03
+  identificou como fonte de retrabalho.
 
 ## Design Notes
 
