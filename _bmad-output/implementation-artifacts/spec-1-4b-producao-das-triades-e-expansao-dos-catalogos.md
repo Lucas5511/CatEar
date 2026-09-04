@@ -58,7 +58,6 @@ context:
 **Ask First:**
 
 - **Número de exercícios de acorde e escolha das raízes.** 4 qualidades × 2 raízes (C4, D4) é a recomendação da TEA: mantém `s-acordes` na faixa dos outros estágios (2–4 hoje, 8 aqui é o maior), cobre as 4 qualidades e quebra o atalho de altura absoluta. As 14 notas suportam **20** tríades (5 raízes: C4, Db4, D4, Eb4, E4) se a Curadoria quiser mais. Decisão de currículo, não de teste.
-- **Dinâmica da fonte: manter `ff` ou trocar para `mf`.** A sessão C1 relatou chiado; a medição mostrou ruído de sopro banda-larga 33 dB abaixo do tom (> 8 kHz a -51,3 dBFS), típico de sax em *fortissimo*. Iowa MIS oferece **pp, mf e ff** — mesma fonte, mesma licença, mesma receita. **Decisão pendente do A/B** (`pw-play assets/audio/sax_c4.wav` no host vs. no app): se o chiado sumir fora do emulador, a causa é a cadeia de reprodução e nada muda. Se trocar, as 22 amostras vêm de uma fonte nova e o alinhamento de ataque sai na mesma passagem.
 - **Nomes dos `errorTypes` de escala.** `altered-third` / `-sixth` / `-seventh` seguem o estilo kebab-inglês de `octave-error` / `far-miss` e nomeiam o grau alterado — que é a confusão real entre os 4 modos (maior×mixolídia = 7ª; dórica×menor = 6ª; dórica×mixolídia = 3ª; o resto é `far-miss`). Taxonomia é da Curadoria de Currículo.
 - Trocar fonte, formato, alvo de loudness, ou o diretório `assets/audio/`.
 - Tornar a mixagem um passo de `tool/ci.sh` (é one-off, como a conversão da 1.3b).
@@ -112,6 +111,7 @@ context:
 - [ ] `assets/audio/*.wav` -- **rerenderizar as 14 notas existentes** com corte do silêncio inicial (~10 ms de pré-ataque preservado) e o alvo de loudness medido depois
 - [ ] `assets/audio/sax_{maj,min,dim,aug}_{c4,d4}.wav` -- gerar as 8 tríades pela receita de mixagem (amix das 3 vozes → loudnorm R128 → mono → corte de cabeça → trim ≤2,5 s → fade-out → PCM 16-bit 44,1 kHz)
 - [ ] `test/audio_assets_bundle_test.dart` -- somar as assertivas de conteúdo PCM: onset ≤ 20 ms, pico com folga, RMS dentro da faixa comum
+- [ ] `test/audio_assets_bundle_test.dart` -- **guarda relacional**: o maior onset medido entre as 22 amostras tem de ser menor que `PhrasePlayer.flourishGap` e `PhrasePlayer.noteGap`, com margem. Hoje esse acoplamento é implícito e foi violado: `flourishGap` de 170 ms contra 200–260 ms de ar morto faz duas das três notas do flourish serem cortadas antes do próprio ataque, e a celebração de acerto simplesmente não toca (sessão C1). Nenhum teste podia ver: `FakeAudioService` tem latência zero e registra `playedRefs`, então as três refs constam como tocadas.
 - [ ] `docs/audio/samples-v1.md` -- corrigir a URL da licença (a atual dá 404; a página migrou para `MIS-Pitches-2012/MISEbAltoSaxophone2012.html`) e registrar o loudness medido por amostra
 - [ ] `assets/curriculum/catalog_v1.json` -- `chordCatalog` += diminished/augmented; `scaleCatalog` += dorian/mixolydian; `errorTypes` += altered-third/-sixth/-seventh; `s-acordes` 2→8 exercícios; `s-escalas` 4→8
 - [ ] `lib/curriculo/domain/enums.dart` -- `ErrorType` += `alteredThird` / `alteredSixth` / `alteredSeventh`
@@ -123,6 +123,7 @@ context:
 **Acceptance Criteria:**
 
 - Given qualquer `assets/audio/*.wav`, then o ataque começa em **≤ 20 ms** — verificado pelo teste, não por inspeção.
+- Given o maior onset entre as 22 amostras, then ele é menor que `PhrasePlayer.flourishGap` e `PhrasePlayer.noteGap` com margem — de modo que nenhuma nota do motif ou do flourish seja interrompida antes do próprio ataque.
 - Given `ebur128` em cada `assets/audio/*.wav`, then o loudness integrado medido está dentro de ±1 LU do alvo, e o valor por amostra está registrado em `docs/audio/samples-v1.md`.
 - Given `flutter test`, then `test/audio_assets_bundle_test.dart` passa com 22 tokens — todo `audioSampleRef` do catálogo tem `.wav` carregável, nenhum órfão, e cada tríade satisfaz PCM/mono/44,1 kHz/16-bit/≤2,5 s como as notas.
 - Given `dart run tool/check_curriculum.dart`, then exit 0 — R1/R2/R3 intactas e todo `errorTypes` resolve na enum.
@@ -149,9 +150,11 @@ context:
      manteve o ar morto junto.
   2. **A-3, confirmado:** loudness real em **-19,0 LUFS** contra os `-16` que a AC
      da 1.3b declarou. Passagem única de `loudnorm` errou ~3 dB e nada mediu depois.
-  3. **A-1, pendente:** o chiado é provavelmente ruído de sopro do sax em `ff`
-     (> 8 kHz a -51,3 dBFS, 33 dB abaixo do tom). Fica em **Ask First** até o A/B
-     `pw-play` separar arquivo de cadeia de reprodução.
+  3. **A-1, descartado em 2026-09-04:** o chiado não está no arquivo. O A/B
+     `pw-play` direto no host reproduziu sem chiado e com ótima qualidade — a
+     causa é a cadeia de reprodução do emulador. A dinâmica `ff` fica, e a
+     entrada correspondente saiu de `Ask First`. Evitou rerenderizar 22 amostras
+     e trocar a fonte por um defeito que não existia nos assets.
 
   **Efeito no escopo congelado:** a story deixa de produzir só 8 tríades e passa a
   **rerenderizar as 22 amostras**, porque o corte de cabeça e o alvo de loudness
@@ -165,6 +168,14 @@ context:
   identificou como fonte de retrabalho.
 
 ## Design Notes
+
+**Dinâmica `ff` mantida — A/B de 2026-09-04.** A sessão C1 relatou chiado e a
+medição encontrou ruído de sopro 33 dB abaixo do tom, o que apontava para trocar
+`ff` por `mf`. O A/B (`pw-play` direto no host) reproduziu **sem chiado, com ótima
+qualidade**: o defeito estava na cadeia do emulador — Android reamostra, o
+emulador faz a ponte, o PipeWire reamostra de novo para os 192 kHz da interface.
+A fonte não muda, e o rerender do A-2/A-3 sai dos AIFFs que já estão em
+`~/Downloads/AltoSax.NoVib.ff.stereo/`, **sem download novo**.
 
 **Por que pré-renderizar e não arpejar.** `AudioService.playSample` documenta "interrupts any sample still playing", e a impl tem um `AudioPlayer` só — invariante que as PRs #13/#14 acabaram de estabilizar com `_chain` e a guarda de `PlayerInterruptedException`. Tocar três notas simultâneas exigiria múltiplos players e quebraria esse contrato num módulo que sangrou para ficar estável. Resolver no asset custa 8 arquivos e zero risco arquitetural.
 
