@@ -51,6 +51,13 @@ Ordenados por valor. Cada um é uma sessão cronometrada, com missão declarada.
 **Missão:** percorrer o loop de prática inteiro, uma vez, prestando atenção só no
 som. Não caçar bug de UI.
 
+> **🚫 Não execute este charter no emulador.** Tentativa de 2026-09-04 gerou um
+> **falso positivo**: um chiado atribuído às amostras que o A/B provou ser da
+> cadeia de reprodução do emulador (Android reamostra → ponte do emulador →
+> PipeWire reamostra para 192 kHz). Julgamento sonoro através do emulador é
+> suspeito nos dois sentidos — inventa defeito e mascara defeito. Aparelho físico
+> com fone, sem exceção.
+
 Perguntas a responder:
 - O motif `r0 → r1 → r0` (gaps de 450/450/900 ms) soa como uma frase musical ou
   como três notas soltas?

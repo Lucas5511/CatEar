@@ -58,7 +58,6 @@ context:
 **Ask First:**
 
 - **Número de exercícios de acorde e escolha das raízes.** 4 qualidades × 2 raízes (C4, D4) é a recomendação da TEA: mantém `s-acordes` na faixa dos outros estágios (2–4 hoje, 8 aqui é o maior), cobre as 4 qualidades e quebra o atalho de altura absoluta. As 14 notas suportam **20** tríades (5 raízes: C4, Db4, D4, Eb4, E4) se a Curadoria quiser mais. Decisão de currículo, não de teste.
-- **Dinâmica da fonte: manter `ff` ou trocar para `mf`.** A sessão C1 relatou chiado; a medição mostrou ruído de sopro banda-larga 33 dB abaixo do tom (> 8 kHz a -51,3 dBFS), típico de sax em *fortissimo*. Iowa MIS oferece **pp, mf e ff** — mesma fonte, mesma licença, mesma receita. **Decisão pendente do A/B** (`pw-play assets/audio/sax_c4.wav` no host vs. no app): se o chiado sumir fora do emulador, a causa é a cadeia de reprodução e nada muda. Se trocar, as 22 amostras vêm de uma fonte nova e o alinhamento de ataque sai na mesma passagem.
 - **Nomes dos `errorTypes` de escala.** `altered-third` / `-sixth` / `-seventh` seguem o estilo kebab-inglês de `octave-error` / `far-miss` e nomeiam o grau alterado — que é a confusão real entre os 4 modos (maior×mixolídia = 7ª; dórica×menor = 6ª; dórica×mixolídia = 3ª; o resto é `far-miss`). Taxonomia é da Curadoria de Currículo.
 - Trocar fonte, formato, alvo de loudness, ou o diretório `assets/audio/`.
 - Tornar a mixagem um passo de `tool/ci.sh` (é one-off, como a conversão da 1.3b).
@@ -149,9 +148,11 @@ context:
      manteve o ar morto junto.
   2. **A-3, confirmado:** loudness real em **-19,0 LUFS** contra os `-16` que a AC
      da 1.3b declarou. Passagem única de `loudnorm` errou ~3 dB e nada mediu depois.
-  3. **A-1, pendente:** o chiado é provavelmente ruído de sopro do sax em `ff`
-     (> 8 kHz a -51,3 dBFS, 33 dB abaixo do tom). Fica em **Ask First** até o A/B
-     `pw-play` separar arquivo de cadeia de reprodução.
+  3. **A-1, descartado em 2026-09-04:** o chiado não está no arquivo. O A/B
+     `pw-play` direto no host reproduziu sem chiado e com ótima qualidade — a
+     causa é a cadeia de reprodução do emulador. A dinâmica `ff` fica, e a
+     entrada correspondente saiu de `Ask First`. Evitou rerenderizar 22 amostras
+     e trocar a fonte por um defeito que não existia nos assets.
 
   **Efeito no escopo congelado:** a story deixa de produzir só 8 tríades e passa a
   **rerenderizar as 22 amostras**, porque o corte de cabeça e o alvo de loudness
@@ -165,6 +166,14 @@ context:
   identificou como fonte de retrabalho.
 
 ## Design Notes
+
+**Dinâmica `ff` mantida — A/B de 2026-09-04.** A sessão C1 relatou chiado e a
+medição encontrou ruído de sopro 33 dB abaixo do tom, o que apontava para trocar
+`ff` por `mf`. O A/B (`pw-play` direto no host) reproduziu **sem chiado, com ótima
+qualidade**: o defeito estava na cadeia do emulador — Android reamostra, o
+emulador faz a ponte, o PipeWire reamostra de novo para os 192 kHz da interface.
+A fonte não muda, e o rerender do A-2/A-3 sai dos AIFFs que já estão em
+`~/Downloads/AltoSax.NoVib.ff.stereo/`, **sem download novo**.
 
 **Por que pré-renderizar e não arpejar.** `AudioService.playSample` documenta "interrupts any sample still playing", e a impl tem um `AudioPlayer` só — invariante que as PRs #13/#14 acabaram de estabilizar com `_chain` e a guarda de `PlayerInterruptedException`. Tocar três notas simultâneas exigiria múltiplos players e quebraria esse contrato num módulo que sangrou para ficar estável. Resolver no asset custa 8 arquivos e zero risco arquitetural.
 

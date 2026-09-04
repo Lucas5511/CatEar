@@ -5,7 +5,7 @@ date: 2026-09-04
 explorador: Clapthesun (escuta) + Murat (medição de follow-up)
 ambiente: emulador pixel API 35 · build profile · PipeWire → Behringer UMC202HD 192k
 build: 9e0adfe
-status: 2 achados confirmados, 1 pendente de A/B
+status: 3 achados confirmados; A-1 resolvido (causa: cadeia do emulador, não os assets)
 ---
 
 # Sessão C1 — ouvir o app
@@ -59,10 +59,21 @@ Energia banda-larga de alta frequência montada sobre o tom — ar passando pela
 palheta. Característico de saxofone em *fortissimo*, que é exatamente a dinâmica
 da fonte (`AltoSax.NoVib.**ff**`).
 
-**PENDENTE DE CONFIRMAÇÃO.** A cadeia de reprodução (emulador reamostrando
-44,1 kHz → interface a 192 kHz) é suspeita alternativa. O A/B decisivo é
-`pw-play assets/audio/sax_c4.wav` direto no host: chiado presente nos dois =
-arquivo; ausente no `pw-play` = emulador. **Não rerenderizar nada antes disso.**
+**❌ HIPÓTESE DESCARTADA — A/B feito em 2026-09-04.** `pw-play
+assets/audio/sax_c4.wav` direto no host reproduziu **sem chiado, com ótima
+qualidade**. O mesmo arquivo, tocado fora do emulador, não tem o defeito relatado.
+
+**Conclusão: o chiado é da cadeia de reprodução do emulador**, não do asset. A
+dinâmica `ff` fica como está e nada é rerenderizado por causa disto. O ruído de
+sopro medido (33 dB abaixo do tom) existe e é do instrumento, mas não é o que foi
+ouvido — em reprodução limpa ele não incomoda.
+
+O que provavelmente produz o chiado: o Android reamostra internamente, o emulador
+faz a ponte para o host, e o PipeWire reamostra de novo para os 192 kHz da
+interface. Três conversões em cadeia sobre material de 44,1 kHz.
+
+**Custo evitado:** rerenderizar 22 amostras e trocar a fonte, com base num achado
+que não existia nos arquivos.
 
 ### A-2 (confirmado) — silêncio variável no início de toda amostra
 
@@ -123,11 +134,26 @@ RMS são calculáveis a partir dos bytes que o teste já carrega.
 
 - O ruído de sopro pode ser desejável? Um timbre real tem ar. A questão é se ele
   atrapalha o reconhecimento de intervalo — que é o propósito do exercício.
-- Se a dinâmica mudar para `mf`, as 14 amostras são rerenderizadas de uma fonte
-  nova, e o A-2 sai junto de graça. Se não mudar, o A-2 ainda exige rerenderizar
-  as 14.
-- Iowa MIS oferece **pp, mf e ff** (confirmado na página índice da coleção), então
-  a dinâmica mais suave é a mesma fonte, mesma licença, mesma receita.
+- **A dinâmica fica em `ff`.** Com o A-1 descartado, não há motivo para trocar a
+  fonte. O A-2 (corte de cabeça) e o A-3 (loudness) continuam valendo e ainda
+  exigem rerenderizar as 14 — mas a partir dos AIFFs que já estão em
+  `~/Downloads/AltoSax.NoVib.ff.stereo/`, **sem download novo**.
+- Iowa MIS oferece pp/mf/ff caso a dinâmica volte à mesa por razão pedagógica —
+  registrado, não acionado.
+
+## ⚠️ O charter C1 não foi concluído
+
+Esta sessão produziu quatro achados, três por **medição**. As perguntas que o
+charter de fato fazia — o motif soa musical? o corte entre notas produz click? o
+loudness é consistente aos ouvidos? o flourish soa como celebração? — **seguem
+sem resposta**, porque o meio usado não é confiável para julgá-las.
+
+O emulador acabou de gerar um falso positivo de qualidade de áudio. Qualquer
+julgamento sonoro feito através dele é suspeito, nos dois sentidos: pode inventar
+defeito que não existe (foi o caso) e pode mascarar defeito que existe.
+
+**C1 precisa ser refeito em aparelho físico com fone.** Até lá, o charter fica
+aberto.
 
 ## Tempo
 
