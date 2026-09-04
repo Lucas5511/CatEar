@@ -76,7 +76,10 @@ enum ErrorType {
   diminished('diminished'),
   augmented('augmented'),
   octaveError('octave-error'),
-  farMiss('far-miss');
+  farMiss('far-miss'),
+  tercaAlterada('terca-alterada'),
+  sextaAlterada('sexta-alterada'),
+  setimaAlterada('setima-alterada');
 
   const ErrorType(this.id);
 

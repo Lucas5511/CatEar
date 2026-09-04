@@ -341,6 +341,31 @@ void main() {
     timeout: _playTimeout,
   );
 
+  group('real AudioService — pre-rendered triads (Story 1.4b)', () {
+    // The 8 triad blocks are the only samples that are not single notes, and
+    // they were mixed offline rather than sourced. Playing each one through the
+    // real service proves the mixed file is bundled and decodable on-device —
+    // the `gates` job only ever sees it through `rootBundle`.
+    const triads = <String>[
+      'sax_maj_c4',
+      'sax_min_c4',
+      'sax_dim_c4',
+      'sax_aug_c4',
+      'sax_maj_d4',
+      'sax_min_d4',
+      'sax_dim_d4',
+      'sax_aug_d4',
+    ];
+
+    testWidgets('every triad token plays to completion', (tester) async {
+      final (container: _, :service) = realService();
+
+      for (final ref in triads) {
+        await service.playSample(ref).timeout(_playTimeout);
+      }
+    }, timeout: const Timeout(Duration(minutes: 3)));
+  });
+
   group('real AudioService — provider wiring', () {
     // The one case the fake cannot answer: `audioServiceProvider` is
     // auto-dispose and wires `ref.onDispose(service.dispose)`, so tearing the

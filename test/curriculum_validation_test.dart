@@ -334,8 +334,11 @@ void main() {
     test('scaleCatalog', () {
       expectViolation(
         struct(
+          // Deliberately not a mode name at all. 'dorian' used to stand here
+          // and Story 1.4b promoted it into scaleCatalog, breaking this probe;
+          // 'phrygian' would only defer the same trap to the next expansion.
           (j) => exercisesOf(stageById(j, 's-escalas')).first['scaleType'] =
-              'dorian',
+              'not-a-scale-id',
         ),
         messageContains: 'scaleCatalog',
         kind: ViolationKind.unknownValue,
