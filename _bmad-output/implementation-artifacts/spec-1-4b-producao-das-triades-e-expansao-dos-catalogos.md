@@ -111,6 +111,7 @@ context:
 - [ ] `assets/audio/*.wav` -- **rerenderizar as 14 notas existentes** com corte do silêncio inicial (~10 ms de pré-ataque preservado) e o alvo de loudness medido depois
 - [ ] `assets/audio/sax_{maj,min,dim,aug}_{c4,d4}.wav` -- gerar as 8 tríades pela receita de mixagem (amix das 3 vozes → loudnorm R128 → mono → corte de cabeça → trim ≤2,5 s → fade-out → PCM 16-bit 44,1 kHz)
 - [ ] `test/audio_assets_bundle_test.dart` -- somar as assertivas de conteúdo PCM: onset ≤ 20 ms, pico com folga, RMS dentro da faixa comum
+- [ ] `test/audio_assets_bundle_test.dart` -- **guarda relacional**: o maior onset medido entre as 22 amostras tem de ser menor que `PhrasePlayer.flourishGap` e `PhrasePlayer.noteGap`, com margem. Hoje esse acoplamento é implícito e foi violado: `flourishGap` de 170 ms contra 200–260 ms de ar morto faz duas das três notas do flourish serem cortadas antes do próprio ataque, e a celebração de acerto simplesmente não toca (sessão C1). Nenhum teste podia ver: `FakeAudioService` tem latência zero e registra `playedRefs`, então as três refs constam como tocadas.
 - [ ] `docs/audio/samples-v1.md` -- corrigir a URL da licença (a atual dá 404; a página migrou para `MIS-Pitches-2012/MISEbAltoSaxophone2012.html`) e registrar o loudness medido por amostra
 - [ ] `assets/curriculum/catalog_v1.json` -- `chordCatalog` += diminished/augmented; `scaleCatalog` += dorian/mixolydian; `errorTypes` += altered-third/-sixth/-seventh; `s-acordes` 2→8 exercícios; `s-escalas` 4→8
 - [ ] `lib/curriculo/domain/enums.dart` -- `ErrorType` += `alteredThird` / `alteredSixth` / `alteredSeventh`
@@ -122,6 +123,7 @@ context:
 **Acceptance Criteria:**
 
 - Given qualquer `assets/audio/*.wav`, then o ataque começa em **≤ 20 ms** — verificado pelo teste, não por inspeção.
+- Given o maior onset entre as 22 amostras, then ele é menor que `PhrasePlayer.flourishGap` e `PhrasePlayer.noteGap` com margem — de modo que nenhuma nota do motif ou do flourish seja interrompida antes do próprio ataque.
 - Given `ebur128` em cada `assets/audio/*.wav`, then o loudness integrado medido está dentro de ±1 LU do alvo, e o valor por amostra está registrado em `docs/audio/samples-v1.md`.
 - Given `flutter test`, then `test/audio_assets_bundle_test.dart` passa com 22 tokens — todo `audioSampleRef` do catálogo tem `.wav` carregável, nenhum órfão, e cada tríade satisfaz PCM/mono/44,1 kHz/16-bit/≤2,5 s como as notas.
 - Given `dart run tool/check_curriculum.dart`, then exit 0 — R1/R2/R3 intactas e todo `errorTypes` resolve na enum.
