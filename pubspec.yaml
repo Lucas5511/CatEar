@@ -60,9 +60,10 @@ flutter:
 
   assets:
     - assets/curriculum/catalog_v1.json
-    # Pre-rendered audio samples: 14 mono .wav notes (alto sax, University of
-    # Iowa MIS) — one per audioSampleRef in catalog_v1.json. Provenance, license
-    # and the one-off conversion recipe: docs/audio/samples-v1.md (Story 1.3b).
+    # Pre-rendered audio samples: 22 mono .wav files (alto sax, University of
+    # Iowa MIS) — 14 single notes plus 8 mixed triad blocks, one per
+    # audioSampleRef in catalog_v1.json. Provenance, license and the one-off
+    # conversion recipe: docs/audio/samples-v1.md (Stories 1.3b / 1.4b).
     - assets/audio/
 
   fonts:

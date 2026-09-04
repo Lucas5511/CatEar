@@ -52,8 +52,8 @@
 ## Deferred from: step-04 review de spec-1-2 (2026-09-02, review_loop 1)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-2-catalogo-de-curriculo-como-dado-com-invariante-de-fading.md`
-  summary: Validação semântica de conteúdo musical no `check_curriculum` — `scaleCatalog[].steps` somar 12; `chordCatalog[].intervals` crescente e dentro da oitava; cardinalidade de `audioSampleRefs` por tipo (intervalo=2, tríade=3, escala=steps+1, cadência ~6). Fora do R1–R3 do frozen; adicionar quando o módulo `audio` (1.3) fixar a semântica das refs.
-  evidence: `lib/curriculo/domain/curriculum_validation.dart` só checa tipo/formato, não faixa/soma.
+  summary: Validação semântica de conteúdo musical no `check_curriculum` — `scaleCatalog[].steps` somar 12; `chordCatalog[].intervals` crescente e dentro da oitava; cardinalidade de `audioSampleRefs` por tipo (intervalo=2, **acorde = 4 refs (bloco de tríade + 3 vozes)** desde a Story 1.4b, escala=steps+1, cadência ~6). Fora do R1–R3 do frozen; adicionar quando o módulo `audio` (1.3) fixar a semântica das refs.
+  evidence: `lib/curriculo/domain/curriculum_validation.dart` só checa tipo/formato, não faixa/soma. Parcialmente coberto desde 2026-09-04: `test/audio_assets_bundle_test.dart` ("every chord exercise is a triad block plus its three voices") assere a cardinalidade **e** o pareamento tríade↔vozes dos exercícios `chord`; os outros tipos e as somas continuam sem gate.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-2-catalogo-de-curriculo-como-dado-com-invariante-de-fading.md`
   summary: `IntervalSpec.quality` e `intervalCatalog[].id` são strings livres não cross-checadas contra os 13 ids canônicos de intervalo — 3ª cópia da taxonomia (junto de `errorTypes[]` e do enum `ErrorType`). Um `IntervalId` enum unificaria; é mudança de schema (Ask First).
   evidence: `curriculum_validation.dart` `_validateCatalog` case `intervalCatalog` — só `_requireString(quality)`.
@@ -142,10 +142,12 @@ retêm como itens com dono, não follow-up genérico.
 - **F7 — RESOLVIDO**: `test/audio_assets_bundle_test.dart` criado. Lê os
   `audioSampleRefs` do `catalog_v1.json` real via `curriculoRepositoryProvider`,
   faz `rootBundle.load(audioAssetKeyFor(ref))` para cada, e assere que
-  `assets/audio/` contém exatamente os 14 `.wav` dos tokens — sem órfão, sem
-  `.gitkeep`. Roda no job `gates` (`flutter test`).
-- Assets: 14 `.wav` mono 44,1 kHz PCM 16-bit em `assets/audio/` (sax alto, Iowa
-  MIS), `assets/audio/.gitkeep` removido. Proveniência, licença verbatim e receita
+  `assets/audio/` contém exatamente os `.wav` dos tokens — sem órfão, sem
+  `.gitkeep`. Roda no job `gates` (`flutter test`). **Atualizado na Story 1.4b:**
+  são 22 tokens (14 notas + 8 tríades pré-renderizadas), não 14.
+- Assets: 22 `.wav` mono 44,1 kHz PCM 16-bit em `assets/audio/` (sax alto, Iowa
+  MIS) — 14 notas isoladas da 1.3b mais 8 blocos de tríade acrescentados pela
+  Story 1.4b, que também rerenderizou as 14; `assets/audio/.gitkeep` removido. Proveniência, licença verbatim e receita
   de conversão em `docs/audio/samples-v1.md`.
 - Itens da Story 1.4 acima (serialização de concorrência do `_JustAudioService`,
   `AudioSession`) **permanecem abertos** — fora do escopo da 1.3b.
@@ -316,3 +318,23 @@ story ainda em `review`) — um a mais do que a retro tinha contado. Triagem:
 
 Re-triar com a razão registrada é a saída legítima do gate. Apagar a tag não é —
 e o gate não sabe distinguir, então isso fica como acordo, não como código.
+
+## Deferred from: step-04 review de spec-1-4b (2026-09-04, review_loop 0)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4b-producao-das-triades-e-expansao-dos-catalogos.md`
+  owner: dev da 1.5
+  summary: `lib/exercicios/presentation/phrase_player.dart:7` ainda diz "within the 14 v1 samples"; são 22 desde a Story 1.4b (14 notas + 8 tríades).
+  evidence: Real e verificado por leitura do arquivo. Não corrigido na 1.4b porque o bloco congelado tem `Never: tocar em lib/exercicios/**` e a AC exige `enums.dart` como única mudança em `lib/` — a intenção exclui a correção. A 1.5 já é dona desse arquivo (extração dos slots type-agnostic).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4b-producao-das-triades-e-expansao-dos-catalogos.md`
+  owner: dev da 1.5
+  summary: O contrato posicional novo dos refs de acorde (`[tríade, fundamental, terça, quinta]`) não está documentado onde um consumidor olha — `lib/curriculo/domain/curriculum.dart:91-92` ainda descreve `audioSampleRefs` como "opaque sample tokens".
+  evidence: Real. Um consumidor que passe os refs de um `ChordExercise` para `PhrasePlayer.playMotif` renderiza `tríade, fundamental, tríade`. Não corrigido na 1.4b pela mesma exclusão de intenção acima (seria mudança em `lib/` além de `enums.dart`); a 1.5 é a primeira consumidora.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4b-producao-das-triades-e-expansao-dos-catalogos.md`
+  summary: Nada liga a sequência de notas de um exercício `scale` aos `steps` do seu `scaleType`; a Story 1.4b dobrou essa superfície (4 modos, 8 exercícios, cada um com 8 tokens escritos à mão).
+  evidence: Trocar `sax_eb4` por `sax_e4` na dórica ascendente passa em todos os gates — o token existe no manifesto, casa a regex e o conjunto de ids não muda; um exercício rotulado "escala dórica" tocaria uma escala maior. É o item de validação semântica já registrado neste arquivo; sem consumidor em runtime até a 1.5.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4b-producao-das-triades-e-expansao-dos-catalogos.md`
+  summary: Os três `ErrorType` novos (`terca-alterada`, `sexta-alterada`, `setima-alterada`) não têm teste semântico ligando cada grau ao par de modos que ele separa.
+  evidence: A afirmação das Design Notes é derivável de `scaleCatalog[].steps` e eu a verifiquei à mão — maior (0,2,4,5,7,9,11) × mixolídia (…,10) diferem só no 7º; menor (…,8,10) × dórica (…,9,10) só no 6º; dórica (0,2,3) × mixolídia (0,2,4) só no 3º. Um teste tabelado fixaria a premissa e falharia se a Story 1.8 acrescentar um modo que a quebre. Sem consumidor até a Story 1.6 (feedback explicativo).

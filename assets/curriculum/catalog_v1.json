@@ -17,11 +17,15 @@
   ],
   "chordCatalog": [
     { "id": "major", "nameUi": "tríade maior", "intervals": [4, 7], "inversion": 0 },
-    { "id": "minor", "nameUi": "tríade menor", "intervals": [3, 7], "inversion": 0 }
+    { "id": "minor", "nameUi": "tríade menor", "intervals": [3, 7], "inversion": 0 },
+    { "id": "diminished", "nameUi": "tríade diminuta", "intervals": [3, 6], "inversion": 0 },
+    { "id": "augmented", "nameUi": "tríade aumentada", "intervals": [4, 8], "inversion": 0 }
   ],
   "scaleCatalog": [
     { "id": "major", "nameUi": "escala maior", "steps": [2, 2, 1, 2, 2, 2, 1] },
-    { "id": "natural_minor", "nameUi": "escala menor natural", "steps": [2, 1, 2, 2, 1, 2, 2] }
+    { "id": "natural_minor", "nameUi": "escala menor natural", "steps": [2, 1, 2, 2, 1, 2, 2] },
+    { "id": "dorian", "nameUi": "escala dórica", "steps": [2, 1, 2, 2, 2, 1, 2] },
+    { "id": "mixolydian", "nameUi": "escala mixolídia", "steps": [2, 2, 1, 2, 2, 1, 2] }
   ],
   "cadenceCatalog": [
     { "id": "authentic", "nameUi": "cadência perfeita", "degrees": ["V", "I"] },
@@ -30,7 +34,8 @@
   "errorTypes": [
     "P1", "m2", "M2", "m3", "M3", "P4", "TT", "P5", "m6", "M6", "m7", "M7", "P8",
     "major", "minor", "diminished", "augmented",
-    "octave-error", "far-miss"
+    "octave-error", "far-miss",
+    "terca-alterada", "sexta-alterada", "setima-alterada"
   ],
   "stages": [
     {
@@ -71,8 +76,14 @@
       "scaffoldIntensity": 0.8,
       "timbreScaffold": "clean",
       "exercises": [
-        { "exerciseType": "chord", "chordQuality": "major", "audioSampleRefs": ["sax_c4", "sax_e4", "sax_g4"] },
-        { "exerciseType": "chord", "chordQuality": "minor", "audioSampleRefs": ["sax_c4", "sax_eb4", "sax_g4"] }
+        { "exerciseType": "chord", "chordQuality": "major", "audioSampleRefs": ["sax_maj_c4", "sax_c4", "sax_e4", "sax_g4"] },
+        { "exerciseType": "chord", "chordQuality": "minor", "audioSampleRefs": ["sax_min_c4", "sax_c4", "sax_eb4", "sax_g4"] },
+        { "exerciseType": "chord", "chordQuality": "diminished", "audioSampleRefs": ["sax_dim_c4", "sax_c4", "sax_eb4", "sax_gb4"] },
+        { "exerciseType": "chord", "chordQuality": "augmented", "audioSampleRefs": ["sax_aug_c4", "sax_c4", "sax_e4", "sax_ab4"] },
+        { "exerciseType": "chord", "chordQuality": "major", "audioSampleRefs": ["sax_maj_d4", "sax_d4", "sax_gb4", "sax_a4"] },
+        { "exerciseType": "chord", "chordQuality": "minor", "audioSampleRefs": ["sax_min_d4", "sax_d4", "sax_f4", "sax_a4"] },
+        { "exerciseType": "chord", "chordQuality": "diminished", "audioSampleRefs": ["sax_dim_d4", "sax_d4", "sax_f4", "sax_ab4"] },
+        { "exerciseType": "chord", "chordQuality": "augmented", "audioSampleRefs": ["sax_aug_d4", "sax_d4", "sax_gb4", "sax_bb4"] }
       ]
     },
     {
@@ -96,7 +107,11 @@
         { "exerciseType": "scale", "scaleType": "major", "direction": "asc", "audioSampleRefs": ["sax_c4", "sax_d4", "sax_e4", "sax_f4", "sax_g4", "sax_a4", "sax_b4", "sax_c5"] },
         { "exerciseType": "scale", "scaleType": "major", "direction": "desc", "audioSampleRefs": ["sax_c5", "sax_b4", "sax_a4", "sax_g4", "sax_f4", "sax_e4", "sax_d4", "sax_c4"] },
         { "exerciseType": "scale", "scaleType": "natural_minor", "direction": "asc", "audioSampleRefs": ["sax_c4", "sax_d4", "sax_eb4", "sax_f4", "sax_g4", "sax_ab4", "sax_bb4", "sax_c5"] },
-        { "exerciseType": "scale", "scaleType": "natural_minor", "direction": "desc", "audioSampleRefs": ["sax_c5", "sax_bb4", "sax_ab4", "sax_g4", "sax_f4", "sax_eb4", "sax_d4", "sax_c4"] }
+        { "exerciseType": "scale", "scaleType": "natural_minor", "direction": "desc", "audioSampleRefs": ["sax_c5", "sax_bb4", "sax_ab4", "sax_g4", "sax_f4", "sax_eb4", "sax_d4", "sax_c4"] },
+        { "exerciseType": "scale", "scaleType": "dorian", "direction": "asc", "audioSampleRefs": ["sax_c4", "sax_d4", "sax_eb4", "sax_f4", "sax_g4", "sax_a4", "sax_bb4", "sax_c5"] },
+        { "exerciseType": "scale", "scaleType": "dorian", "direction": "desc", "audioSampleRefs": ["sax_c5", "sax_bb4", "sax_a4", "sax_g4", "sax_f4", "sax_eb4", "sax_d4", "sax_c4"] },
+        { "exerciseType": "scale", "scaleType": "mixolydian", "direction": "asc", "audioSampleRefs": ["sax_c4", "sax_d4", "sax_e4", "sax_f4", "sax_g4", "sax_a4", "sax_bb4", "sax_c5"] },
+        { "exerciseType": "scale", "scaleType": "mixolydian", "direction": "desc", "audioSampleRefs": ["sax_c5", "sax_bb4", "sax_a4", "sax_g4", "sax_f4", "sax_e4", "sax_d4", "sax_c4"] }
       ]
     },
     {

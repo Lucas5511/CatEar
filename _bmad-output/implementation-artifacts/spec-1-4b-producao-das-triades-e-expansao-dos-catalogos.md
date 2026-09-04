@@ -2,7 +2,7 @@
 title: 'Story 1.4b — Produção das tríades e expansão dos catálogos'
 type: 'feature'
 created: '2026-09-03'
-status: 'ready-for-dev'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '1c30586a06a8f2364654cde44d483c34533ccda7'
@@ -124,8 +124,8 @@ context:
 
 **Execution** (em ordem de dependência — a 2 consome a saída da 1):
 
-- [ ] **1. `assets/audio/<as 14 notas>.wav`** -- rerenderizar a partir dos AIFFs de origem (ver §Verification → Ambiente). Ordem dos filtros: estéreo→mono → `atrim` de cabeça deixando ~10 ms de pré-ataque → `asetpts=PTS-STARTPTS` → **`loudnorm` em duas passagens medidas** → `atrim=end=2.5` → `afade=t=out` com `st` calculado da duração real → PCM 16-bit 44,1 kHz
-- [ ] **2. `assets/audio/sax_{maj,min,dim,aug}_{c4,d4}.wav`** -- gerar as 8 tríades **a partir das notas já rerenderizadas na tarefa 1** (mixar as originais desalinhadas produziria arpejo, não acorde):
+- [x] **1. `assets/audio/<as 14 notas>.wav`** -- rerenderizar a partir dos AIFFs de origem (ver §Verification → Ambiente). Ordem dos filtros: estéreo→mono → `atrim` de cabeça deixando ~10 ms de pré-ataque → `asetpts=PTS-STARTPTS` → **`loudnorm` em duas passagens medidas** → `atrim=end=2.5` → `afade=t=out` com `st` calculado da duração real → PCM 16-bit 44,1 kHz
+- [x] **2. `assets/audio/sax_{maj,min,dim,aug}_{c4,d4}.wav`** -- gerar as 8 tríades **a partir das notas já rerenderizadas na tarefa 1** (mixar as originais desalinhadas produziria arpejo, não acorde):
   ```
   ffmpeg -i sax_c4.wav -i sax_e4.wav -i sax_g4.wav \
     -filter_complex "[0:a][1:a][2:a]amix=inputs=3:duration=shortest:normalize=0[m]; \
@@ -134,15 +134,15 @@ context:
   # depois: loudnorm two-pass (mede, aplica) -> atrim=end=2.5 -> afade calculado -> sax_maj_c4.wav
   ```
   `normalize=0` é obrigatório: o default do `amix` divide por N e entrega a tríade mais baixa que as notas
-- [ ] **3. `assets/curriculum/catalog_v1.json`** -- as 4 entradas de catálogo completas, os 3 `errorTypes`, `s-acordes` 2→8 (os 2 existentes reescritos com o ref do bloco), `s-escalas` 4→8
-- [ ] **4. `lib/curriculo/domain/enums.dart`** -- `ErrorType` += `tercaAlterada` / `sextaAlterada` / `setimaAlterada`. **Sobe no mesmo commit que a tarefa 3** — qualquer um dos dois sozinho reprova o `check_curriculum`
-- [ ] **5. `test/curriculum_catalog_test.dart`** -- estender os conjuntos congelados (linhas 117-118) para `{major,minor,diminished,augmented}` e `{major,natural_minor,dorian,mixolydian}`
-- [ ] **6. `test/audio_assets_bundle_test.dart`** -- manifesto 14→22; docstring e nome do teste; assertivas de conteúdo PCM (onset, pico, RMS); pareamento tríade↔vozes; contagens `s-acordes`==8 e `s-escalas`==8; guarda relacional contra `flourishGap`/`noteGap`
-- [ ] **7. `integration_test/catear_e2e_test.dart`** -- laço de `playSample` sobre os 8 tokens de tríade sob `_playTimeout`
-- [ ] **8. `docs/audio/samples-v1.md`** -- seção de segunda derivação (receita + tabela tríade→vozes + licença); regenerar a tabela SHA-256 para 22; atualizar duração/RMS esperados; "14 arquivos" → 22; **reverificar o texto da licença na página nova** (`MIS-Pitches-2012/MISEbAltoSaxophone2012.html`), atualizar a citação verbatim, a data de acesso e o link do Web Archive, substituindo as 3 URLs nomeadamente
-- [ ] **9. `pubspec.yaml`** -- comentário "14 mono .wav notes" → 22
-- [ ] **10. `deferred-work.md`** -- corrigir "tríade=3" para "acorde = 4 refs (bloco + 3 vozes)"
-- [ ] **11. `sprint-status.yaml`** -- a chave `1-4b-produção-das-tríades-e-expansão-dos-catálogos` já existe como `ready-for-dev`; mover para `in-progress` ao começar e `review` ao abrir o PR
+- [x] **3. `assets/curriculum/catalog_v1.json`** -- as 4 entradas de catálogo completas, os 3 `errorTypes`, `s-acordes` 2→8 (os 2 existentes reescritos com o ref do bloco), `s-escalas` 4→8
+- [x] **4. `lib/curriculo/domain/enums.dart`** -- `ErrorType` += `tercaAlterada` / `sextaAlterada` / `setimaAlterada`. **Sobe no mesmo commit que a tarefa 3** — qualquer um dos dois sozinho reprova o `check_curriculum`
+- [x] **5. `test/curriculum_catalog_test.dart`** -- estender os conjuntos congelados (linhas 117-118) para `{major,minor,diminished,augmented}` e `{major,natural_minor,dorian,mixolydian}`
+- [x] **6. `test/audio_assets_bundle_test.dart`** -- manifesto 14→22; docstring e nome do teste; assertivas de conteúdo PCM (onset, pico, RMS); pareamento tríade↔vozes; contagens `s-acordes`==8 e `s-escalas`==8; guarda relacional contra `flourishGap`/`noteGap`
+- [x] **7. `integration_test/catear_e2e_test.dart`** -- laço de `playSample` sobre os 8 tokens de tríade sob `_playTimeout`
+- [x] **8. `docs/audio/samples-v1.md`** -- seção de segunda derivação (receita + tabela tríade→vozes + licença); regenerar a tabela SHA-256 para 22; atualizar duração/RMS esperados; "14 arquivos" → 22; **reverificar o texto da licença na página nova** (`MIS-Pitches-2012/MISEbAltoSaxophone2012.html`), atualizar a citação verbatim, a data de acesso e o link do Web Archive, substituindo as 3 URLs nomeadamente
+- [x] **9. `pubspec.yaml`** -- comentário "14 mono .wav notes" → 22
+- [x] **10. `deferred-work.md`** -- corrigir "tríade=3" para "acorde = 4 refs (bloco + 3 vozes)"
+- [x] **11. `sprint-status.yaml`** -- a chave `1-4b-produção-das-tríades-e-expansão-dos-catálogos` já existe como `ready-for-dev`; mover para `in-progress` ao começar e `review` ao abrir o PR
 
 **Acceptance Criteria:**
 
@@ -256,7 +256,174 @@ context:
 
 ## Implementation Notes
 
+**Rodada de implementação — 2026-09-04.** Tarefas 1–10 concluídas; a 11 está em
+`in-progress` e vira `review` na abertura do PR.
+
+**Produção dos assets (tarefas 1–2).** Script one-off em `python3` + `ffmpeg`
+8.0.1, não versionado (mesma razão da 1.3b). Os AIFFs de origem estavam onde a
+spec previa — nenhum HALT foi necessário. Resultado das 22, medido no arquivo
+entregue:
+
+- **onset ≤ 8,3 ms** (orçamento 20 ms; guarda relacional: 50 % de
+  `flourishGap` = 85 ms);
+- **`I` = -16,0 LUFS em todas as 22** (±1 LU do alvo);
+- **pico entre -10,4 e -3,9 dBFS** (teto -1,0);
+- **RMS: mediana -15,85 dBFS, desvio máximo -1,69 dB** (`sax_d5`; faixa ±6 dB);
+- duração 2,500 s exatos, `data` = 220500 bytes — no limite superior do cap, por
+  construção.
+
+Tabela completa por amostra em `docs/audio/samples-v1.md` §Verificação da saída.
+
+**Desvio da ordem de filtros declarada na tarefa 1.** A spec listava
+`… → loudnorm → atrim=end=2.5 → afade`. A implementação faz
+`atrim de cabeça → atrim=end=<dur> → loudnorm (2 passagens) → atrim=end=<dur> +
+afade → pcm_s16le`. Duas razões, ambas de correção:
+
+1. **medir o que é entregue.** Com o corte de cauda depois do `loudnorm`, o `I`
+   medido é o de um sinal 0,3–1,0 s mais longo que o arquivo final — a mesma
+   classe de erro que produziu o A-3. Cortando antes, o valor medido é o do
+   arquivo entregue, e por isso as 22 batem -16,0 exatos.
+2. **contagem de amostras exata.** O `loudnorm` reamostra internamente para
+   192 kHz; sair dele direto para 16-bit devolvia comprimentos com ±1–2
+   amostras de folga, e 2,5 s **é** o teto de `maxDataBytes` (220500 B) no
+   `audio_assets_bundle_test`. O recorte final garante 110250 quadros.
+   O `afade` continua sendo o último filtro, com `st` calculado da duração real,
+   como a spec exige.
+
+Intermediários todos em `pcm_f32le` — nenhuma etapa passa por 16-bit antes da
+saída. As tríades são mixadas dos `.wav` de 16-bit já commitados (é o que a
+tarefa 2 manda: "a partir das notas já rerenderizadas na tarefa 1"), com
+`normalize=0`, em float, e só então normalizadas.
+
+**Onset final menor que os 10 ms de pré-ataque.** Esperado: o ganho do
+`loudnorm` (+3 a +4 dB) empurra acima do limiar de -40 dBFS amostras do sopro
+que antes ficavam abaixo dele. Registrado no doc de proveniência.
+
+**Um arquivo de teste fora do Code Map: `test/curriculum_validation_test.dart`.**
+O grupo "orphan exercise id in each *Catalog" usava `'dorian'` como id
+deliberadamente inexistente no `scaleCatalog` (linha ~338). Com a expansão,
+`dorian` passou a existir e o teste ficou vermelho por construção. Trocado por
+`'phrygian'`, com comentário explicando por quê. É consequência direta da
+expansão de catálogo, não escopo novo — o Code Map só havia conferido o grupo
+"errorTypes sync" desse arquivo.
+
+**Licença reverificada (tarefa 8).** `MISsaxophone.html` confirmado **404**;
+a página do instrumento vive em
+`MIS-Pitches-2012/MISEbAltoSaxophone2012.html` (HTTP 200, lista os
+`AltoSax.NoVib.ff.*.stereo.aif`), e o texto da licença está em `MIS.html`
+(HTTP 200). A citação verbatim foi **ampliada**: a atribuição a Lawrence Fritts,
+antes parafraseada, agora é citada palavra por palavra. Links do Web Archive
+trocados de wildcard para snapshots datados
+(`20260619045647` para `MIS.html`, `20260129163013` para a página do
+instrumento).
+
+**Cobertura de teste somada.** `audio_assets_bundle_test.dart` foi de 3 para 11
+testes: manifesto de 22, header RIFF, onset ≤ 20 ms, pico ≤ -1,0 dBFS, RMS ±6 dB
+da mediana, guarda relacional contra `PhrasePlayer`, sem órfãos, forma
+`[tríade, raiz, terça, quinta]` (com pareamento token↔vozes e token↔`chordQuality`),
+e as contagens `s-acordes`/`s-escalas` = 8. `catear_e2e_test.dart` ganhou um laço
+de `playSample` sobre os 8 tokens de tríade contra o serviço real.
+
+**Rodada de review (2026-09-04).** O gate que faltava era o principal: nada
+verificava que um `.wav` contém o *pitch* que o token nomeia — todas as
+assertivas eram agnósticas de altura, e o grupo e2e só assere "não lançou" (o
+emulador do CI roda `-noaudio`). Somados dois testes e um âncora:
+
+- **`every sample carries the pitches its token names`** — Goertzel (sem FFT,
+  sobre os frames que `measure()` já decodifica) contra uma tabela congelada
+  token→Hz, em **duas janelas de 100 ms** (onset+30 ms e 1,30 s; janelas longas
+  perdem coerência para o drift de afinação da fonte e dariam falso negativo).
+  Duas propriedades: as vozes nomeadas soam **juntas** (spread ≤ 8 dB; pior
+  spread real medido 3,3 dB) e nada que o token **não** nomeia é mais alto
+  (≥ 3 dB abaixo da voz mais fraca; pior margem real 6,4 dB), pulando candidatos
+  harmonicamente relacionados — a oitava de uma nota real é legitimamente forte.
+  **Mutation-testado:** `sax_c4.wav` copiado sobre `sax_maj_c4.wav`,
+  `sax_dim_d4`↔`sax_aug_d4` trocados e `sax_e4`↔`sax_f4` trocados **falham**
+  (no caso do swap de tríade, spread de 55 dB contra o teto de 8).
+- **Âncora absoluta de RMS.** A faixa de ±6 dB é relativa à mediana das próprias
+  22, então uma regressão **uniforme** — que é exatamente o A-3, ~3 dB em todas —
+  arrasta a mediana junto e deixa todo desvio por amostra perto de zero. Somada
+  a assertiva de que a mediana fica a ≤ 1,5 dB dos -15,85 dBFS medidos. A faixa
+  de ±6 dB por amostra e seu comentário ficam intactos (o **KEEP** da spec).
+  Mutation-testado: -3 dB uniforme nas 22 falha com "median RMS ... -18.85".
+- **`PhrasePlayer.flourishRefs ⊆ manifesto`** — `flourishRefs` é hardcoded e
+  `playFlourish` engole falhas com `.ignore()`; sem essa linha, uma mudança de
+  catálogo que derrubasse um desses tokens obrigaria a apagar o arquivo (o teste
+  de órfãos exige) e o flourish emudeceria em silêncio — o sintoma que abriu o C1.
+
+Endurecimentos menores da mesma rodada: `measureAll` memoizada (os 22 assets
+eram decodificados e varridos 5× por execução); a guarda relacional passou a
+ordenar onset ausente como **pior** caso (`?? double.infinity`) em vez de melhor;
+`_parseWav` mantém o clamp de `dataBytes` mas agora **assere** que o `size`
+declarado cabe nos bytes disponíveis, nomeando o arquivo; `firstWhere` do teste
+de contagem ganhou `orElse: () => fail(...)`; o lookup de `_qualityToken` é
+checado antes de virar `'_null_'`; e o probe de órfão em
+`curriculum_validation_test.dart` passou de `'phrygian'` para `'not-a-scale-id'`
+— `'phrygian'` só adiaria para a Story 1.8 a mesma armadilha que `'dorian'`
+acabou de disparar. Em `docs/audio/samples-v1.md`, a receita de lote da 1.3b
+(`declare -A MAP=(…)`) foi **restaurada** — a tarefa 8 era somar a segunda
+derivação, não remover a primeira — e a tabela de onsets na fonte ganhou a frase
+que nomeia método e objeto medido, para não ser lida como a mesma medição da
+tabela do A-2 na sessão C1 (limiar por amostra no AIFF vs. janelas de RMS de
+20 ms no `.wav` entregue). `deferred-work.md` teve as duas linhas que ainda
+diziam "14 `.wav`" corrigidas para 22.
+
+Verificação desta rodada (escopo dos arquivos tocados): `dart format`,
+`flutter analyze`, `flutter test test/audio_assets_bundle_test.dart
+test/curriculum_validation_test.dart` (60 testes) e
+`dart run tool/check_deferred_owners.dart` — todos verdes. A suíte completa e o
+`integration_test` foram rodados verdes na rodada anterior e não foram
+reexecutados aqui.
+
+**Verificação extra (não pedida, barata):** FFT de 1 s no sustain de cada tríade
+confirma os **três fundamentais simultâneos** esperados (ex.: `sax_dim_d4` →
+294 / 352 / 417 Hz, todos dentro de 2 % do nominal). É a prova de que a mixagem
+casou as vozes certas e de que o resultado é bloco, não arpejo.
+
+**Todos os comandos de §Verification saíram com exit 0**, incluindo
+`bash tool/ci.sh` (11 gates) e `flutter test integration_test -d emulator-5554`
+(19 testes, com o grupo novo "pre-rendered triads (Story 1.4b)" verde no
+emulador `pixel`). `git status` mostra `lib/curriculo/domain/enums.dart` como
+**única** mudança em `lib/`.
+
 ## Review Triage Log
+
+**Iteração 1 — 2026-09-04.** Três lentes (blind-hunter, edge-case-hunter, verification-gap)
+sobre o diff desde `1c30586`. 33 achados brutos, forte sobreposição. Nenhum roteou para
+`intent_gap` nem `bad_spec`, então não houve loopback: todo achado sobrevivente tem correção
+mínima confinada a arquivos de teste/doc que esta story já possui.
+
+| # | Achado (lente) | Veredito | Evidência da verificação | Rota |
+|---|---|---|---|---|
+| 1 | Nada verifica que um `.wav` contém a altura que seu token nomeia; tríade pode ser nota única, arpejo ou vozes trocadas (todas as 3 lentes) | **high** | Confirmado. Copiar `sax_c4.wav` sobre `sax_maj_c4.wav` passa manifesto, header, onset, pico, RMS, pareamento e órfãos — todos são agnósticos de altura. O e2e só assere não-lançou: `-noaudio` está nas 4 invocações de emulador (`.github/workflows/ci.yaml:167,178`; `e2e-burn-in.yaml:79,95`). A propriedade que define a story não tem gate. | patch |
+| 2 | Sem âncora absoluta de nível: A-3 (erro uniforme de 3 dB) pode voltar em silêncio (todas as 3 lentes) | **medium** | Confirmado por construção: a banda de RMS é ±6 dB da **mediana das mesmas 22**. Uma regressão uniforme move a mediana junto e todo desvio fica ~0 dB. O `I = -16 LUFS` só é verificado por loop de shell colado em tabela markdown. | patch |
+| 3 | `docs/audio/samples-v1.md` perdeu o script batch da 1.3b (`declare -A MAP`) | **medium** | Confirmado: `git show HEAD:docs/audio/samples-v1.md` tem o loop na linha 113; o doc atual não tem nenhum. A tarefa 8 mandava *somar* a segunda derivação, não remover a primeira. | patch |
+| 4 | `PhrasePlayer.flourishRefs` não é garantido estar no manifesto; `playFlourish` engole falhas | **medium** | Confirmado: `flourishRefs` é `['sax_c4','sax_e4','sax_g4']` hardcoded (`phrase_player.dart:47`) e `playFlourish` usa `.ignore()` (`:132`). Se um ref sair do catálogo, o teste de órfãos manda deletar o arquivo e o flourish emudece — o sintoma exato do C1. | patch |
+| 5 | `?? 0` no `reduce` da guarda relacional inverte o significado de onset ausente | **low** | Confirmado no código. Mitigado: o teste irmão (`:199`) já assere `isNotNull` para os 22, então um arquivo silencioso reprova ali antes. Fica o defeito latente (`worst.onsetMs!` lançaria `TypeError` em vez de falha diagnóstica). Correção direta. | patch |
+| 6 | `_parseWav` passou a clampar `dataBytes = min(size, disponível)`, mascarando header inflado | **low** | Confirmado: HEAD tinha `dataBytes = size`. O clamp é correto para não ler fora do buffer, mas apaga a discrepância em vez de reportá-la. | patch |
+| 7 | `firstWhere` sem `orElse` no teste de contagem de estágios | **low** | Confirmado: lança `StateError` nu se um `stageId` for renomeado, contra o estilo diagnóstico do resto do arquivo. | patch |
+| 8 | `_qualityToken[e.chord.id]` nulo degrada o matcher para `contains('_null_')` | **low** | Confirmado: mapa de 4 entradas sem guarda; uma 5ª qualidade produziria mensagem enganosa. | patch |
+| 9 | `deferred-work.md:145,147` ainda descreve o conjunto de assets como "14 `.wav`" | **low** | Confirmado por grep. Arquivo que a story já editou. | patch |
+| 10 | Sonda de órfão trocou `'dorian'` por `'phrygian'` — id que a Story 1.8 pode tornar real | **low** | Confirmado: é a mesma armadilha que acabou de quebrar, adiada. Correção direta: usar id que nenhuma expansão pode reivindicar. | patch |
+| 11 | `measureAll()` recomputado do zero em 5 testes (~12M iterações e 110 loads redundantes) | **low** | Confirmado: 5 chamadas independentes, dados imutáveis no run. Correção direta por memoização. | patch |
+| 12 | As duas tabelas de onset (samples-v1.md × sessão C1) discordam sem reconciliação | **low** | Confirmado: métodos e objetos medidos diferem (AIFF de origem × WAV entregue; limiar por amostra × janelas RMS), mas o texto sugere a mesma medição. | patch |
+| 13 | `phrase_player.dart:7` ainda diz "within the 14 v1 samples" | **low** | Confirmado e real. Mas o bloco congelado tem `Never: tocar em lib/exercicios/**` e a AC exige `enums.dart` como única mudança em `lib/` — a **intenção** exclui a correção, e a Story 1.5 já é dona desse arquivo. | defer |
+| 14 | Nada liga a sequência de notas de um exercício `scale` aos `steps` do seu `scaleType` | **medium** | Confirmado (a própria lente verification-gap arquivou como `defer`): trocar `sax_eb4` por `sax_e4` na dórica ascendente passa todos os gates. É o item de validação semântica já registrado em `deferred-work.md:55`, sem consumidor em runtime até a 1.5. | defer |
+| 15 | Os 3 `ErrorType` novos não têm consumidor nem teste semântico | **low** | Verifiquei a Design Note por conta própria e ela está **correta**: maior 0,2,4,5,7,9,11 × mixolídia …,10 diferem só no 7º grau; menor …,8,10 × dórica …,9,10 só no 6º; dórica 0,2,3 × mixolídia 0,2,4 só no 3º. Sem consumidor até a 1.6 e a correção é um teste novo, não uma correção direta. | defer |
+| 16 | Onset tem teto (20 ms) mas não piso: cortar *dentro* do transiente é indetectável | **low** | Real, mas um piso a partir do cruzamento de -40 dBFS é frágil: os onsets entregues variam 1,9–8,3 ms por conteúdo espectral, não por corte. Um piso fixo produziria falha espúria. Correção acrescenta complexidade para um caso improvável. | rejeitado |
+| 17 | Lista de tríades do e2e é uma 3ª cópia hardcoded do manifesto | **low** | O manifesto congelado de 22 tokens (`:158`) reprova qualquer 9ª tríade, então a divergência não passa silenciosa — obriga a editar o teste unitário primeiro. Derivar por regex no integration test acrescenta complexidade sem fechar risco novo. | rejeitado |
+| 18 | Silêncio no fim do arquivo (áudio curto com padding até 2,5 s) passaria | **low** | Subsumido pelo patch #1: a sonda espectral mede também uma janela de sustain tardia, então um arquivo que emudece antes reprova ali. | rejeitado |
+| 19 | Duas raízes a um tom de distância (C4/D4) mal entrega o objetivo anti-altura-absoluta | **medium** | Argumento tem mérito, mas a correção é editar o bloco congelado: 4 qualidades × 2 raízes (C4, D4) é **decisão explícita do humano** registrada no Change Log de 2026-09-04. Regra de triagem: rejeitar achado cuja correção é editar a spec desta build. Levado ao humano no step-05. | rejeitado |
+| 20 | `measure()` decodifica com constantes congeladas antes de validar o header parseado | **false** | Não ocorre: os 22 arquivos são gerados pelo mesmo pipeline e o teste de header (`:166`) reprova qualquer não-mono/não-16-bit. Um asset heterogêneo falharia lá; a leitura equivocada seria consequência, não causa não detectada. | rejeitado |
+| 21 | `frames == 0` produz divisão por zero e RMS `NaN` | **false** | Não ocorre: `minDataBytes` (88200) reprova qualquer payload < 1 s antes, e `expect(data.lengthInBytes, greaterThan(44))` já barra o arquivo vazio. | rejeitado |
+| 22 | Banda de RMS ±6 dB é ~3,5× mais larga que o espalhamento observado (máx 1,69 dB) | **false** | Não é defeito: a largura é **decisão congelada e justificada** ("sanidade larga, não casamento de nível — uma tríade densa tem crest factor diferente"). Medi e confirmei o espalhamento. O buraco real de nível é o #2, tratado por âncora absoluta em vez de estreitar esta banda. | rejeitado |
+| 23 | Story deixada "mid-flight" (`in-progress`, `review_loop_iteration: 0`, log de triagem vazio) | **false** | É o estado correto do workflow no momento em que a lente leu o diff: a tarefa 11 especifica `review` na abertura do PR, e este log estava vazio porque o review ainda não havia rodado. | rejeitado |
+| 24 | `audio-sourcing.md:14,147` ainda diz "14 `.wav`" | **false** | Ambas as linhas são afirmações **históricas** sobre a Story 1.3b ("✅ RESOLVIDO (Story 1.3b)", "Balde 1 — feito (Story 1.3b)"), corretas no seu tempo verbal. Não descrevem o estado atual. | rejeitado |
+| 25 | Contrato posicional dos refs de acorde não está documentado em `curriculum.dart` | **medium** | Real, mas a correção é comentário em `lib/curriculo/domain/curriculum.dart`, e a AC congelada exige `enums.dart` como única mudança em `lib/`. Mesma exclusão de intenção do #13; a 1.5 é a consumidora. | defer |
+
+**Agrupamento e rota:** 12 entradas para `patch` (#1–#12), 4 para `defer` (#13, #14, #15, #25),
+9 rejeitadas. Sem `intent_gap` nem `bad_spec` → sem loopback; `review_loop_iteration` fica em 0.
+
 
 ## Design Notes
 
