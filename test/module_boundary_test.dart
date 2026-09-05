@@ -210,6 +210,121 @@ void main() {
     },
   );
 
+  test('exercicios/presentation naming IntervalSpec fails (Rule 6)', () async {
+    write('lib/core/core.dart', 'library;\n');
+    write(
+      'lib/exercicios/presentation/practice_screen.dart',
+      'class OptionButton {\n'
+          '  OptionButton(this.option);\n'
+          '  final IntervalSpec option;\n'
+          '}\n',
+    );
+
+    final r = await run();
+    expect(r.exitCode, isNot(0));
+    expect(
+      r.stderr.toString(),
+      contains('exercicios/presentation/practice_screen.dart:3'),
+    );
+    expect(r.stderr.toString(), contains('type-agnostic'));
+  });
+
+  test(
+    'exercicios/presentation naming IntervalExercise fails (Rule 6)',
+    () async {
+      write('lib/core/core.dart', 'library;\n');
+      write(
+        'lib/exercicios/presentation/copy_of_the_view.dart',
+        'List<IntervalExercise> loop = [];\n',
+      );
+
+      final r = await run();
+      expect(r.exitCode, isNot(0));
+      expect(
+        r.stderr.toString(),
+        contains('exercicios/presentation/copy_of_the_view.dart:1'),
+      );
+    },
+  );
+
+  test(
+    'exercicios/presentation naming ChordSpec / ChordExercise fails (Rule 6)',
+    () async {
+      // The case the interval-only ban missed: a Story 1.5 dev duplicating the
+      // tree writes it against the types being added, never against interval.
+      write('lib/core/core.dart', 'library;\n');
+      write(
+        'lib/exercicios/presentation/chord_body.dart',
+        'class ChordBody {\n'
+            '  ChordBody(this.spec, this.exercise);\n'
+            '  final ChordSpec spec;\n'
+            '  final ChordExercise exercise;\n'
+            '}\n',
+      );
+
+      final r = await run();
+      expect(r.exitCode, isNot(0));
+      expect(
+        r.stderr.toString(),
+        contains('exercicios/presentation/chord_body.dart:3'),
+      );
+      expect(r.stderr.toString(), contains('ChordSpec'));
+    },
+  );
+
+  test(
+    'exercicios/presentation naming ScaleSpec / ScaleExercise fails (Rule 6)',
+    () async {
+      write('lib/core/core.dart', 'library;\n');
+      write(
+        'lib/exercicios/presentation/scale_body.dart',
+        'List<ScaleExercise> scales = [];\n'
+            'ScaleSpec? picked;\n',
+      );
+
+      final r = await run();
+      expect(r.exitCode, isNot(0));
+      expect(
+        r.stderr.toString(),
+        contains('exercicios/presentation/scale_body.dart:1'),
+      );
+      expect(r.stderr.toString(), contains('ScaleSpec'));
+    },
+  );
+
+  test('type-agnostic exercicios/presentation passes (Rule 6)', () async {
+    write('lib/core/core.dart', 'library;\n');
+    write(
+      'lib/exercicios/presentation/practice_screen.dart',
+      // Three near-misses that must NOT trip the rule: an identifier that only
+      // contains a banned name, a doc comment, and a string literal.
+      '/// Replaces the old IntervalExercise-typed view.\n'
+          'class IntervalExerciseScreen {\n'
+          "  static const legacy = 'IntervalSpec';\n"
+          '  final AnswerOption? option = null;\n'
+          '}\n'
+          'class AnswerOption {}\n',
+    );
+
+    final r = await run();
+    expect(r.exitCode, 0, reason: '${r.stdout}${r.stderr}');
+  });
+
+  test(
+    'IntervalSpec outside exercicios/presentation passes (Rule 6)',
+    () async {
+      write('lib/core/core.dart', 'library;\n');
+      write(
+        'lib/exercicios/domain/exercise_question.dart',
+        'class IntervalSpec {}\n'
+            'IntervalSpec? project() => null;\n',
+      );
+
+      final r = await run();
+      expect(r.exitCode, 0, reason: '${r.stdout}${r.stderr}');
+    },
+  );
+
   test('empty lib/ fails', () async {
     write('lib/.gitkeep', '');
     final r = await run();

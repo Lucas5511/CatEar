@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-01-2026 12:00
-last_updated: 09-05-2026 09:30
+last_updated: 09-06-2026 09:00
 project: CatEar
 project_key: NOKEY
 tracking_system: file-system
@@ -42,6 +42,7 @@ development_status:
   1-3b-produção-do-conjunto-de-amostras-de-áudio-da-v1: done
   1-4-exercício-de-reconhecimento-de-intervalo-em-contexto-musical: done
   1-4b-produção-das-tríades-e-expansão-dos-catálogos: done
+  1-5a-seam-type-agnostic-do-fluxo-de-prática: review
   1-5-exercícios-de-reconhecimento-de-acordes-e-escalas: backlog
   1-6-feedback-explicativo-em-erro: backlog
   1-7-estrutura-de-sessão-de-10-15-minutos: backlog
@@ -142,7 +143,16 @@ action_items:
     action: "Spec da 1.5 deve conter a extração dos slots type-agnostic do
       ExerciseCard — não deixar o dev copiar o _ActiveExerciseView"
     owner: "dev da 1.5"
-    status: open
+    status: done
+    resolution: "Story 1.5a. O preflight do ATDD derrubou a premissa: ExerciseCard
+      já é type-agnostic (recebe só `child`), então o item apontava para o lugar
+      errado. O acoplamento real estava no state, nos widgets de opção/resultado
+      e na resolução de errorType, todos generalizados agora. A intenção de fundo
+      — não deixar copiar o _ActiveExerciseView — virou gate executável: Regra 6
+      do check_module_boundaries, varredura de tokens que proíbe os 8 símbolos de
+      tipo do catálogo em lib/exercicios/presentation/. A primeira versão bania
+      só os 2 de intervalo e o review pegou: uma árvore duplicada para acorde
+      passava."
     ref: "_bmad-output/implementation-artifacts/session-retro-2026-09-03.md"
   - id: "session-retro-2026-09-03-s2-puxar-deferred-work-por-owner-na-spec"
     epic: 1
