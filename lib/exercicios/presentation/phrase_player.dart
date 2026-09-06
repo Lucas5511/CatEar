@@ -1,43 +1,45 @@
-/// Sequences [AudioService.playSample] into a short melodic motif so an
-/// interval is always heard *in context* (FR-2 / AC2), never as two isolated
-/// notes in silence.
+/// Sequences [AudioService.playSample] into a short motif so an exercise is
+/// always heard *in context* (FR-2 / AC2), never as isolated notes in silence.
 ///
-/// The catalog gives exactly two notes per interval (`refs[0]`, `refs[1]`,
-/// already ordered by `direction`). The smallest honest musical context within
-/// the 14 v1 samples is a 3-event contour reusing those notes — `r0, r1, r0` —
-/// with rhythm. `playSample` interrupts whatever is playing and completes on
-/// interruption, so the player fires each note without waiting for the whole
-/// sample and uses timed gaps between fires; the last note rings out for
-/// [returnHold] and is then cut with `stop()`.
+/// The player is a **dumb executor**: it plays the [MotifEvent] sequence it is
+/// handed, in order, with the rhythm carried on each event. Which contour a
+/// given exercise gets — `r0, r1, r0` for an interval, block → arpeggio → block
+/// for a chord, the 8 notes in order for a scale — is decided in
+/// `../domain/motif.dart` and travels on the `ExerciseQuestion`. Story 1.4 had
+/// that contour hard-coded here, which truncated a scale to two notes; keeping
+/// it out of the presentation layer is what stops per-type branching from
+/// growing here (Rule 6 cannot see a `switch` on `ExerciseType`).
 ///
-/// Rhythm default (Design Notes): ~450 ms between the first two events, ~900 ms
-/// hold on the returning note. Orchestration lives here in `exercicios/`, never
-/// inside `audio/`.
+/// `playSample` interrupts whatever is playing and completes on interruption,
+/// so the player fires each event without waiting for the whole sample and uses
+/// the event's `hold` as the gap to the next fire; the last event rings out for
+/// its own hold and is then cut with `stop()`. Orchestration lives here in
+/// `exercicios/`, never inside `audio/`.
 library;
 
 import 'dart:async';
 
 import 'package:catear/audio/audio.dart';
 
-/// Plays the interval motif for one exercise. One instance per screen; reused
-/// for replays (NFR-5 — no limit, no penalty).
+import '../domain/motif.dart';
+
+/// The one definition of the flourish gap.
+///
+/// `PracticeTimings.flourishGap` defaults to it and the screen injects that
+/// value into the player, so there is a single number to change — and the
+/// sample-onset guard in `test/audio_assets_bundle_test.dart` measures against
+/// the same one instead of a second copy that could drift below it.
+const Duration defaultFlourishGap = Duration(milliseconds: 170);
+
+/// Plays the motif of one exercise, whatever shape it has. One instance per
+/// screen; reused for replays (NFR-5 — no limit, no penalty).
 class PhrasePlayer {
-  PhrasePlayer(
-    this._audio, {
-    this.noteGap = const Duration(milliseconds: 450),
-    this.returnHold = const Duration(milliseconds: 900),
-    this.flourishGap = const Duration(milliseconds: 170),
-  });
+  PhrasePlayer(this._audio, {this.flourishGap = defaultFlourishGap});
 
   final AudioService _audio;
 
-  /// Gap after each of the first two motif events before the next fires.
-  final Duration noteGap;
-
-  /// How long the returning note rings before it is cut.
-  final Duration returnHold;
-
-  /// Gap between the notes of the correct-answer flourish.
+  /// Gap between the notes of the correct-answer flourish. The motif's own
+  /// rhythm is not a field any more — it rides on each [MotifEvent].
   final Duration flourishGap;
 
   /// The correct-answer flourish: a quick major arpeggio reusing existing
@@ -78,21 +80,15 @@ class PhrasePlayer {
     _releaseWait = null;
   }
 
-  /// Plays the `r0, r1, r0` motif for [audioSampleRefs].
+  /// Plays [motif] — one fire per event, each interrupting the previous one.
   ///
   /// Completes when the motif finishes. Rethrows an [AudioError] from any
   /// [AudioService.playSample] so the card can show its audio-error state.
-  Future<void> playMotif(List<String> audioSampleRefs) async {
-    if (audioSampleRefs.isEmpty) {
-      throw ArgumentError.value(
-        audioSampleRefs,
-        'audioSampleRefs',
-        'need >= 1 ref',
-      );
+  Future<void> playMotif(List<MotifEvent> motif) async {
+    if (motif.isEmpty) {
+      throw ArgumentError.value(motif, 'motif', 'need >= 1 event');
     }
     final generation = ++_generation;
-    final r0 = audioSampleRefs.first;
-    final r1 = audioSampleRefs.length > 1 ? audioSampleRefs[1] : r0;
 
     Object? failure;
     void fire(String ref) {
@@ -104,19 +100,15 @@ class PhrasePlayer {
           );
     }
 
-    fire(r0);
-    await _wait(noteGap);
-    if (generation != _generation) return;
-    if (failure != null) throw failure!;
+    for (var i = 0; i < motif.length; i++) {
+      fire(motif[i].ref); // interrupts the previous event
+      await _wait(motif[i].hold);
+      if (generation != _generation) return;
+      // The last event's failure is checked after the cut below, so a note that
+      // rejects mid-ring still silences the player before it surfaces.
+      if (i < motif.length - 1 && failure != null) throw failure!;
+    }
 
-    fire(r1); // interrupts r0
-    await _wait(noteGap);
-    if (generation != _generation) return;
-    if (failure != null) throw failure!;
-
-    fire(r0); // interrupts r1
-    await _wait(returnHold);
-    if (generation != _generation) return;
     await _audio.stop(); // cut the last note
     // A playSample that rejects just after the last gap would otherwise be
     // swallowed — yield one turn so its onError runs, then re-check.

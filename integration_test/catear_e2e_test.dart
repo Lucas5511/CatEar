@@ -9,9 +9,10 @@
 //
 // Covered:
 //   - app shell (Story 1.1): boot gate, 4-tab navigation, theme, Android back
-//   - practice flow (Story 1.4): the "Praticar" journey over the REAL provider
-//     graph — the widget suite fakes `audioServiceProvider`, so this is the
-//     only place the real `_JustAudioService` and its lifecycle are exercised
+//   - practice flow (Stories 1.4 / 1.5): the "Praticar" journey over the REAL
+//     provider graph — the widget suite fakes `audioServiceProvider`, so this
+//     is the only place the real `_JustAudioService` and its lifecycle are
+//     exercised — once per motif contour: interval, chord and scale
 //   - AudioService (Stories 1.3 / 1.3b): the shared contract suite run against
 //     the real `_JustAudioService`, plus the provider-wiring case that only
 //     exists on this side
@@ -24,6 +25,8 @@ import 'package:catear/app/database_error_screen.dart';
 import 'package:catear/app/home_shell.dart';
 import 'package:catear/audio/audio.dart';
 import 'package:catear/core/core.dart';
+import 'package:catear/curriculo/curriculo.dart';
+import 'package:catear/exercicios/presentation/interval_exercise_screen.dart';
 import 'package:catear/progressao/progressao.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -44,11 +47,21 @@ import '../test/support/audio_service_contract.dart';
 ///
 /// [failFirst] makes the first open attempt throw so the retry path can be
 /// exercised; the next attempt (after `ref.invalidate`) succeeds.
-Future<void> pumpApp(WidgetTester tester, {bool failFirst = false}) async {
+///
+/// [practiceTypes] narrows the practice loop to one exercise type so a journey
+/// can reach a chord or a scale card without answering its way there — the
+/// real audio path stays untouched, only the selection changes.
+Future<void> pumpApp(
+  WidgetTester tester, {
+  bool failFirst = false,
+  Set<ExerciseType>? practiceTypes,
+}) async {
   var shouldFail = failFirst;
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        if (practiceTypes != null)
+          practiceExerciseTypesProvider.overrideWithValue(practiceTypes),
         databaseProvider.overrideWith((ref) async {
           if (shouldFail) {
             shouldFail = false;
@@ -285,8 +298,8 @@ void main() {
       expect(find.text('Que intervalo é este?'), findsOneWidget);
       expect(find.text('Ouvir de novo'), findsOneWidget);
 
-      // Let the real AudioService sequence the motif (450 + 450 + 900 ms) with
-      // slack for the platform player.
+      // Let the real AudioService sequence the interval motif
+      // (450 + 450 + 900 ms) with slack for the platform player.
       await tester.pump(const Duration(seconds: 5));
       await tester.pumpAndSettle();
 
@@ -311,6 +324,69 @@ void main() {
         resultLine,
         isTrue,
         reason: 'answering must land on a correct or incorrect result line',
+      );
+    });
+
+    // Story 1.5 gave chord and scale their own contours, and they are a
+    // different load on the real platform player than the interval's three
+    // fires: a chord fires 5 times with three of them 260 ms apart, a scale
+    // fires 8 times at 270 ms. Both exist only behind `FakeAudioService`
+    // everywhere else, and the fake models "playSample was called", not "a
+    // sound came out" — the same gap that let the auto-dispose regression
+    // through. One journey per contour, in this file for the build-cost reason
+    // at the top.
+    Future<void> playsOneExerciseThrough(
+      WidgetTester tester, {
+      required ExerciseType type,
+      required String prompt,
+    }) async {
+      await pumpApp(tester, practiceTypes: {type});
+
+      await tester.tap(find.text('Praticar'));
+      await tester.pumpAndSettle();
+      expect(find.text(prompt), findsOneWidget);
+
+      // The longest contour is the chord at 2380 ms; 6 s leaves slack for the
+      // platform player on a cold emulator.
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('O som não tocou'),
+        findsNothing,
+        reason: 'every fire of the $type motif must play on the real service',
+      );
+
+      final options = find.byType(FilledButton);
+      expect(options, findsWidgets);
+      await tester.tap(options.first);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('Isso!').evaluate().isNotEmpty ||
+            find.textContaining('Não foi dessa vez').evaluate().isNotEmpty,
+        isTrue,
+        reason: 'answering must land on a correct or incorrect result line',
+      );
+    }
+
+    testWidgets('Praticar plays a real chord motif (block, arpeggio, block)', (
+      tester,
+    ) async {
+      await playsOneExerciseThrough(
+        tester,
+        type: ExerciseType.chord,
+        prompt: 'Que acorde é este?',
+      );
+    });
+
+    testWidgets('Praticar plays a real scale motif (all 8 notes)', (
+      tester,
+    ) async {
+      await playsOneExerciseThrough(
+        tester,
+        type: ExerciseType.scale,
+        prompt: 'Que escala é esta?',
       );
     });
 

@@ -87,8 +87,28 @@ class Stage {
 sealed class Exercise {
   const Exercise({required this.audioSampleRefs, required this.requiresVoice});
 
-  /// Opaque sample tokens (`^[a-z0-9_]+$`), non-empty. Their concrete meaning
-  /// is resolved by the `audio` module (Stories 1.3 / 1.3b).
+  /// Sample tokens (`^[a-z0-9_]+$`), non-empty. What a token *names* is
+  /// resolved by the `audio` module (Stories 1.3 / 1.3b); what a *position*
+  /// means is per exercise type, and consumers depend on it:
+  ///
+  ///  * [IntervalExercise] — the two notes in **playing** order, already
+  ///    reordered by `direction`: `[lower, upper]` ascending,
+  ///    `[upper, lower]` descending (M3 desc is `[sax_e4, sax_c4]`).
+  ///  * [ChordExercise] — `[block, root, third, fifth]`. The block is the whole
+  ///    triad pre-rendered; positions 1..3 are its notes, for the arpeggio.
+  ///    Story 1.4b wrote them this way so Story 1.5's chord motif could play
+  ///    block → arpeggio → block; a consumer that assumes the interval layout
+  ///    would render "triad, root, triad".
+  ///  * [ScaleExercise] — the 8 notes in playing order, `direction` already
+  ///    applied.
+  ///  * [ResolutionExercise] — the individual **notes** of the cadence's
+  ///    chords, chord by chord, in order: in v1 six note tokens, three per
+  ///    chord (`authentic` is `[sax_g4, sax_b4, sax_d5, sax_c4, sax_e4,
+  ///    sax_g4]` — a G triad then a C triad). There is no pre-rendered block
+  ///    for a cadence, unlike [ChordExercise].
+  ///
+  /// `lib/exercicios/domain/motif.dart` is the single consumer of these
+  /// contracts.
   final List<String> audioSampleRefs;
 
   /// `true` iff this is a [ResolutionExercise].

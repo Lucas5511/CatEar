@@ -6,6 +6,7 @@
 /// [ExerciseQuestion] / [AnswerOption], never a catalog spec.
 library;
 
+import 'package:catear/curriculo/curriculo.dart';
 import 'package:flutter/foundation.dart';
 
 import 'exercise_attempt.dart';
@@ -21,22 +22,29 @@ const Object _keep = Object();
 class PracticeState {
   PracticeState({
     required List<ExerciseQuestion> loop,
-    required List<AnswerOption> pool,
+    required Map<ExerciseType, List<AnswerOption>> pool,
     required this.index,
     required List<AnswerOption> options,
     required this.phase,
     required List<ExerciseAttempt> attempts,
     this.picked,
   }) : loop = List.unmodifiable(loop),
-       pool = List.unmodifiable(pool),
+       // Deep: `Map.unmodifiable` freezes the map, not the lists inside it,
+       // and `pool[type]` is handed straight to callers.
+       pool = Map.unmodifiable({
+         for (final entry in pool.entries)
+           entry.key: List<AnswerOption>.unmodifiable(entry.value),
+       }),
        options = List.unmodifiable(options),
        attempts = List.unmodifiable(attempts);
 
-  /// Every question of the loop, in stage order (23 intervals in v1).
+  /// Every question of the loop, in stage order (39 in v1: 23 intervals,
+  /// 8 chords, 8 scales).
   final List<ExerciseQuestion> loop;
 
-  /// The distinct [AnswerOption] distractor pool (13 in v1).
-  final List<AnswerOption> pool;
+  /// The distractor pool, one list per type (13 / 4 / 4 in v1). Keyed by type
+  /// so a question's alternatives can never be drawn from another catalog.
+  final Map<ExerciseType, List<AnswerOption>> pool;
 
   /// Position in [loop].
   final int index;

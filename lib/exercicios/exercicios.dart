@@ -12,6 +12,7 @@ export 'domain/exercise_attempt.dart';
 export 'domain/exercise_question.dart';
 export 'domain/interval_options.dart';
 export 'domain/interval_practice.dart';
+export 'domain/motif.dart';
 export 'domain/practice_state.dart';
 // Only the route screen. The loop notifier is a presentation internal — tests
 // that need it import the file directly.
