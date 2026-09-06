@@ -1,12 +1,18 @@
-/// The interval-recognition exercise screen (Story 1.4).
+/// The recognition-practice screen (Story 1.4, made type-agnostic in 1.5a).
 ///
 /// Reached from the Home "Praticar" CTA via `Navigator.push` (one level above
-/// the shell). Walks a fixed loop of the catalog's `IntervalExercise`s in stage
-/// order, one Exercise card at a time: the interval plays as a short rhythmic
-/// motif (never an isolated dyad), replay is free, the answer is a tap on 4
-/// generated options, a correct answer gets an immediate visual + sonic flourish
-/// (no mascot), and every attempt's reaction time is captured into an
+/// the shell). Walks a fixed loop of catalog exercises in stage order, one
+/// Exercise card at a time: the exercise plays as a short rhythmic motif (never
+/// an isolated dyad), replay is free, the answer is a tap on 4 generated
+/// options, a correct answer gets an immediate visual + sonic flourish (no
+/// mascot), and every attempt's reaction time is captured into an
 /// [ExerciseAttempt] that is logged (no persistence — that is Story 1.7).
+///
+/// Nothing here knows which *kind* of exercise it is showing: it consumes
+/// [ExerciseQuestion] / [AnswerOption] and the per-type difference lives in
+/// `../domain/exercise_question.dart`. `check_module_boundaries` Rule 6 keeps
+/// this file (and every sibling) free of the interval types — that static rule,
+/// not a widget test, is what stops this tree from being copied per type.
 library;
 
 import 'dart:async';
@@ -21,85 +27,35 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../domain/exercise_attempt.dart';
+import '../domain/exercise_question.dart';
 import '../domain/interval_options.dart';
 import '../domain/interval_practice.dart';
+import '../domain/practice_state.dart';
 import 'exercise_card.dart';
 import 'phrase_player.dart';
 
 part 'interval_exercise_screen.g.dart';
 
-/// Where the loop is in answering the current exercise.
-enum AnswerPhase { answering, correct, incorrect, finished }
-
-const Object _keep = Object();
-
-/// Immutable snapshot of the fixed interval loop.
-@immutable
-class IntervalPracticeState {
-  IntervalPracticeState({
-    required List<IntervalExercise> loop,
-    required List<IntervalSpec> pool,
-    required this.index,
-    required List<IntervalSpec> options,
-    required this.phase,
-    required List<ExerciseAttempt> attempts,
-    this.picked,
-  }) : loop = List.unmodifiable(loop),
-       pool = List.unmodifiable(pool),
-       options = List.unmodifiable(options),
-       attempts = List.unmodifiable(attempts);
-
-  /// Every `IntervalExercise` of the catalog, in stage order.
-  final List<IntervalExercise> loop;
-
-  /// The distinct `IntervalSpec` distractor pool (13 in v1).
-  final List<IntervalSpec> pool;
-
-  /// Position in [loop].
-  final int index;
-
-  /// The 4 (or fewer) options for the current exercise, in display order.
-  final List<IntervalSpec> options;
-
-  final AnswerPhase phase;
-
-  /// Attempts recorded so far, one per answered exercise. In-memory only;
-  /// Story 1.7 consumes these.
-  final List<ExerciseAttempt> attempts;
-
-  /// The option the user tapped, once answered.
-  final IntervalSpec? picked;
-
-  IntervalExercise get current => loop[index];
-  IntervalSpec get answer => current.interval;
-
-  IntervalPracticeState copyWith({
-    int? index,
-    List<IntervalSpec>? options,
-    AnswerPhase? phase,
-    List<ExerciseAttempt>? attempts,
-    Object? picked = _keep,
-  }) => IntervalPracticeState(
-    loop: loop,
-    pool: pool,
-    index: index ?? this.index,
-    options: options ?? this.options,
-    phase: phase ?? this.phase,
-    attempts: attempts ?? this.attempts,
-    picked: identical(picked, _keep) ? this.picked : picked as IntervalSpec?,
-  );
-}
+/// Which exercise types the practice loop draws from.
+///
+/// The product value is intervals only — Story 1.5 is what turns chord and
+/// scale on, because that is a visible change. It is a provider so a test can
+/// drive a chord or a scale exercise through this exact widget tree, which is
+/// the behavioural half of AC3 (the static half is Rule 6).
+@riverpod
+Set<ExerciseType> practiceExerciseTypes(Ref ref) => defaultPracticeTypes;
 
 /// Owns the loop / attempt state. `UI → Notifier → domain` (AD-5): it reads the
 /// catalog through `curriculoRepositoryProvider` and never touches Drift.
 @riverpod
 class IntervalPractice extends _$IntervalPractice {
   @override
-  Future<IntervalPracticeState> build() async {
+  Future<PracticeState> build() async {
+    final types = ref.watch(practiceExerciseTypesProvider);
     final curriculum = await ref.watch(curriculoRepositoryProvider).load();
-    final loop = intervalLoop(curriculum);
-    final pool = intervalPool(curriculum);
-    return IntervalPracticeState(
+    final loop = practiceLoop(curriculum, types: types);
+    final pool = practicePool(curriculum, types: types);
+    return PracticeState(
       loop: loop,
       pool: pool,
       index: 0,
@@ -109,26 +65,27 @@ class IntervalPractice extends _$IntervalPractice {
     );
   }
 
-  static List<IntervalSpec> _optionsFor(
-    List<IntervalExercise> loop,
-    List<IntervalSpec> pool,
+  static List<AnswerOption> _optionsFor(
+    List<ExerciseQuestion> loop,
+    List<AnswerOption> pool,
     int index,
   ) {
-    final exercise = loop[index];
-    return intervalOptionsFor(
-      exercise.interval,
+    final question = loop[index];
+    return answerOptionsFor(
+      question.answer,
       pool,
-      seed: Object.hash(exercise.interval.id, exercise.direction, index),
+      seed: question.optionSeed(index),
     );
   }
 
   /// Records an answer: builds and logs the [ExerciseAttempt], moves to the
   /// correct / incorrect phase.
-  void answer(IntervalSpec option, int reactionTimeMs) {
+  void answer(AnswerOption option, int reactionTimeMs) {
     final s = state.value;
     if (s == null || s.phase != AnswerPhase.answering) return;
 
-    final attempt = ExerciseAttempt.forInterval(
+    final attempt = ExerciseAttempt.forAnswer(
+      exerciseType: s.current.type,
       answer: s.answer,
       picked: option,
       reactionTimeMs: reactionTimeMs,
@@ -210,7 +167,7 @@ class IntervalExerciseScreen extends ConsumerWidget {
 class _ActiveExerciseView extends ConsumerStatefulWidget {
   const _ActiveExerciseView({required this.state, super.key});
 
-  final IntervalPracticeState state;
+  final PracticeState state;
 
   @override
   ConsumerState<_ActiveExerciseView> createState() =>
@@ -238,7 +195,7 @@ class _ActiveExerciseViewState extends ConsumerState<_ActiveExerciseView> {
 
   Timer? _advanceTimer;
 
-  IntervalPracticeState get _s => widget.state;
+  PracticeState get _s => widget.state;
 
   @override
   void initState() {
@@ -318,7 +275,7 @@ class _ActiveExerciseViewState extends ConsumerState<_ActiveExerciseView> {
     });
   }
 
-  Future<void> _pick(IntervalSpec option) async {
+  Future<void> _pick(AnswerOption option) async {
     if (_picked || !_optionsEnabled || _s.phase != AnswerPhase.answering) {
       return;
     }
@@ -364,7 +321,7 @@ class _ActiveExerciseViewState extends ConsumerState<_ActiveExerciseView> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'Que intervalo é este?',
+            s.current.prompt,
             textAlign: TextAlign.center,
             style: theme.textTheme.titleMedium,
           ),
@@ -412,8 +369,8 @@ class _OptionButton extends StatelessWidget {
     required this.onTap,
   });
 
-  final IntervalSpec option;
-  final IntervalPracticeState state;
+  final AnswerOption option;
+  final PracticeState state;
   final bool enabled;
   final VoidCallback onTap;
 
@@ -489,7 +446,7 @@ class _OptionButton extends StatelessWidget {
 class _ResultLine extends StatelessWidget {
   const _ResultLine({required this.state});
 
-  final IntervalPracticeState state;
+  final PracticeState state;
 
   @override
   Widget build(BuildContext context) {

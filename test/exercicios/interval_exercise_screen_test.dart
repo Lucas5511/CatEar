@@ -37,10 +37,18 @@ class _RealCatalogBundle extends CachingAssetBundle {
   Future<ByteData> load(String key) async => ByteData.sublistView(_bytes);
 }
 
-ProviderContainer _container({FakeAudioService? audio, Object? catalogError}) {
+ProviderContainer _container({
+  FakeAudioService? audio,
+  Object? catalogError,
+  Set<ExerciseType>? types,
+}) {
   return ProviderContainer(
     overrides: [
       audioServiceProvider.overrideWithValue(audio ?? FakeAudioService()),
+      // The product loop is intervals only (Story 1.5 flips it). Overriding
+      // the type set is how a chord / scale exercise reaches this exact widget
+      // tree without any product change.
+      if (types != null) practiceExerciseTypesProvider.overrideWithValue(types),
       if (catalogError != null)
         curriculoRepositoryProvider.overrideWithValue(
           _FailingRepo(catalogError),
@@ -78,8 +86,15 @@ Future<void> _settleFirstMotif(WidgetTester tester) async {
   await tester.pump();
 }
 
-IntervalPracticeState _state(ProviderContainer c) =>
+PracticeState _state(ProviderContainer c) =>
     c.read(intervalPracticeProvider).value!;
+
+/// The one private view that renders every exercise. Finding the *same* widget
+/// type for interval, chord and scale is what "no per-type widget" means at
+/// runtime; `check_module_boundaries` Rule 6 is the static half.
+Finder _activeView() => find.byWidgetPredicate(
+  (w) => w.runtimeType.toString() == '_ActiveExerciseView',
+);
 
 Finder _fredoka() => find.byWidgetPredicate(
   (w) => w is Text && w.style?.fontFamily == 'Fredoka',
@@ -324,7 +339,14 @@ void main() {
 
     final attempt = _state(container).attempts.single;
     expect(attempt.wasCorrect, isFalse);
-    expect(attempt.errorType, ExerciseAttempt.errorTypeForIntervalId(wrong.id));
+    expect(
+      attempt.errorType,
+      ExerciseAttempt.errorTypeFor(
+        exerciseType: ExerciseType.interval,
+        answer: answer,
+        picked: wrong,
+      ),
+    );
     expect(attempt.reactionTimeMs, closeTo(800, 60));
 
     expect(find.textContaining('Não foi dessa vez'), findsOneWidget);
@@ -657,6 +679,150 @@ void main() {
       reason: 'the in-flight motif is cut when the answer lands',
     );
     await tester.pump(const Duration(seconds: 2));
+  });
+
+  // ---------------------------------------------------------------------
+  // AC3 — chord and scale render through the same tree as interval.
+  // ---------------------------------------------------------------------
+
+  testWidgets('an interval exercise renders through _ActiveExerciseView', (
+    tester,
+  ) async {
+    final container = _container();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester);
+
+    expect(_activeView(), findsOneWidget);
+    expect(find.text('Que intervalo é este?'), findsOneWidget);
+    expect(_state(container).current.type, ExerciseType.interval);
+  });
+
+  testWidgets('a ChordExercise renders through the same widget tree', (
+    tester,
+  ) async {
+    final fake = FakeAudioService();
+    final container = _container(
+      audio: fake,
+      types: const {ExerciseType.chord},
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester);
+
+    // Same card, same private view, same replay affordance — nothing per type.
+    expect(_activeView(), findsOneWidget);
+    expect(find.byType(ExerciseCard), findsOneWidget);
+    expect(find.text('Ouvir de novo'), findsOneWidget);
+    expect(find.text('Que acorde é este?'), findsOneWidget);
+    expect(find.text('Que intervalo é este?'), findsNothing);
+
+    final s = _state(container);
+    expect(s.current.type, ExerciseType.chord);
+    // Options come from chordCatalog, and every one is on screen.
+    expect(
+      s.options.map((o) => o.id).toSet(),
+      isNot(contains('M3')),
+      reason: 'a chord card must not offer interval options',
+    );
+    for (final option in s.options) {
+      expect(find.text(option.nameUi), findsOneWidget);
+    }
+    expect(fake.playedRefs, isNotEmpty);
+
+    await tester.pump(const Duration(milliseconds: 600));
+    final wrong = s.options.firstWhere((o) => o.id != s.answer.id);
+    await tester.tap(find.text(wrong.nameUi));
+    await tester.pump();
+
+    final attempt = _state(container).attempts.single;
+    expect(attempt.exerciseType, ExerciseType.chord);
+    expect(attempt.errorType, isIn(chordErrorTypes.toList()));
+    expect(find.textContaining('Não foi dessa vez'), findsOneWidget);
+    expect(find.text('Continuar'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a ScaleExercise renders through the same widget tree', (
+    tester,
+  ) async {
+    final container = _container(types: const {ExerciseType.scale});
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester);
+
+    expect(_activeView(), findsOneWidget);
+    expect(find.byType(ExerciseCard), findsOneWidget);
+    expect(find.text('Que escala é esta?'), findsOneWidget);
+
+    final s = _state(container);
+    expect(s.current.type, ExerciseType.scale);
+    expect(
+      s.options.map((o) => o.id).toSet(),
+      everyElement(
+        isIn(const ['major', 'natural_minor', 'dorian', 'mixolydian']),
+      ),
+      reason: 'options come from scaleCatalog',
+    );
+    for (final option in s.options) {
+      expect(find.text(option.nameUi), findsOneWidget);
+    }
+
+    await tester.pump(const Duration(milliseconds: 600));
+    final wrong = s.options.firstWhere((o) => o.id != s.answer.id);
+    await tester.tap(find.text(wrong.nameUi));
+    await tester.pump();
+
+    final attempt = _state(container).attempts.single;
+    expect(attempt.exerciseType, ExerciseType.scale);
+    // The `major` id exists in BOTH catalogs; a scale mistake is never filed
+    // as a chord-quality one.
+    expect(attempt.errorType, isNotNull);
+    expect(chordErrorTypes, isNot(contains(attempt.errorType)));
+    expect(intervalErrorTypes, isNot(contains(attempt.errorType)));
+    expect(find.text('Continuar'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a correct chord answer flourishes and advances, like interval', (
+    tester,
+  ) async {
+    final container = _container(types: const {ExerciseType.chord});
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester);
+
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.tap(find.text(_state(container).answer.nameUi));
+    await tester.pump();
+
+    expect(find.textContaining('Isso!'), findsOneWidget);
+    expect(_state(container).attempts.single.errorType, isNull);
+    expect(_fredoka(), findsNothing);
+    await tester.pump(const Duration(seconds: 2));
+    expect(_state(container).index, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an empty loop lands on the end-of-loop view, not a crash', (
+    tester,
+  ) async {
+    // `loop.isEmpty` is a branch Story 1.5a introduced — it could not happen
+    // before, because the interval loop is never empty. It is reachable now
+    // through `practiceExerciseTypesProvider`, so it needs a guard: without
+    // one, `_optionsFor(loop, pool, 0)` indexes an empty list.
+    final container = _container(types: const <ExerciseType>{});
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(_app(container));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Você percorreu todos os intervalos de hoje.'),
+      findsOneWidget,
+    );
+    expect(find.text('Voltar'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }
 

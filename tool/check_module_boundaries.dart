@@ -19,6 +19,31 @@
 //     (lib/<m>/testing.dart or lib/<m>/testing/**) — the fakes/spies there are
 //     reachable only from test/. Production code depends on the interface plus
 //     its provider, never on a test double.
+//  6. No file under lib/exercicios/presentation/ may NAME a catalog exercise
+//     type or spec (`IntervalExercise`/`IntervalSpec`, `ChordExercise`/
+//     `ChordSpec`, `ScaleExercise`/`ScaleSpec`, `ResolutionExercise`/
+//     `CadenceSpec`) — the practice flow is type-agnostic (Story 1.5a, AC3 of
+//     Story 1.5): it consumes `ExerciseQuestion` / `AnswerOption` and the
+//     per-type difference lives in lib/exercicios/domain/. All eight are banned,
+//     not just the interval pair: the types a duplicated tree would actually be
+//     written against are the ones Story 1.5 adds.
+//
+//     KNOWN RESIDUE: `ExerciseType` cannot be banned — presentation names it
+//     legitimately (recording an attempt, selecting the loop) — so a
+//     `switch (s.current.type)` branching the UI per type stays undetectable
+//     here and is caught only in review.
+//
+//     This rule is about SYMBOLS, not directives, and that is the point. A copy
+//     of the widget tree specialised per exercise type imports nothing new — it
+//     would sail past rules 1-5, and a widget test that exercises all three
+//     types passes just as happily against three duplicated trees as against
+//     one generic tree. Only a symbol scan tells them apart.
+//
+//     Scanned over the token stream, so a mention in a doc comment or inside a
+//     string literal is not a violation; a declaration or a use is. An
+//     identifier that merely CONTAINS a banned name (`IntervalExerciseScreen`)
+//     is a different token and is not a violation either. Note the .dart filter
+//     below skips .g.dart, so generated code is out of scope.
 //
 // Exit code is non-zero on any violation, naming the offending file and line.
 
@@ -36,6 +61,21 @@ const _modules = [
   'audio',
   'curriculo',
 ];
+
+/// Rule 6: the lib-relative directory whose contents must not name an exercise
+/// type, and the symbols that would say it does — every `Exercise` subclass of
+/// the sealed hierarchy plus the `*Spec` each one carries.
+const _typeAgnosticDir = 'exercicios/presentation/';
+const _typeAgnosticBannedSymbols = {
+  'IntervalExercise',
+  'IntervalSpec',
+  'ChordExercise',
+  'ChordSpec',
+  'ScaleExercise',
+  'ScaleSpec',
+  'ResolutionExercise',
+  'CadenceSpec',
+};
 
 void main(List<String> args) {
   final root = args.isNotEmpty ? args.first : Directory.current.path;
@@ -84,6 +124,27 @@ void main(List<String> args) {
     }
 
     final owningModule = _moduleOf(libRelative);
+
+    // Rule 6: no exercise-type symbol inside the practice presentation layer.
+    // Walked over tokens rather than the AST so comments and string literals
+    // are naturally out of scope, and matched on the whole lexeme so
+    // `IntervalExerciseScreen` is not mistaken for `IntervalExercise`.
+    if (libRelative.startsWith(_typeAgnosticDir)) {
+      for (
+        var token = parsed.unit.beginToken;
+        !token.isEof;
+        token = token.next!
+      ) {
+        if (!_typeAgnosticBannedSymbols.contains(token.lexeme)) continue;
+        final line = parsed.lineInfo.getLocation(token.offset).lineNumber;
+        violations.add(
+          '$libRelative:$line: names "${token.lexeme}" inside '
+          'lib/$_typeAgnosticDir — the practice flow is type-agnostic; the '
+          'per-type difference belongs behind ExerciseQuestion / AnswerOption '
+          'in lib/exercicios/domain/',
+        );
+      }
+    }
 
     for (final directive in parsed.unit.directives) {
       String? uri;
