@@ -110,6 +110,51 @@ Finder _fredoka() => find.byWidgetPredicate(
   (w) => w is Text && w.style?.fontFamily == 'Fredoka',
 );
 
+/// The practice screen under the maximum accessibility text size.
+Widget _scaledApp(ProviderContainer container) => UncontrolledProviderScope(
+  container: container,
+  child: MaterialApp(
+    theme: appTheme(Brightness.light),
+    home: const MediaQuery(
+      data: MediaQueryData(textScaler: TextScaler.linear(2.2)),
+      child: IntervalExerciseScreen(),
+    ),
+  ),
+);
+
+/// The [ErrorType] the taxonomy resolves for a scale pair — used to pick, from
+/// the options actually on screen, one of each error family.
+ErrorType _scaleError(AnswerOption answer, AnswerOption picked) =>
+    ExerciseAttempt.errorTypeFor(
+      exerciseType: ExerciseType.scale,
+      answer: answer,
+      picked: picked,
+    );
+
+/// The mascot's speech bubble (Story 1.6) — the only mascot surface on this
+/// screen, and the only Fredoka text on it.
+Finder _mascotBubble() =>
+    find.byWidgetPredicate((w) => w.runtimeType.toString() == '_MascotBubble');
+
+/// The sentence the bubble is showing.
+String _bubbleText(WidgetTester tester) => tester
+    .widget<Text>(find.descendant(of: _mascotBubble(), matching: _fredoka()))
+    .data!;
+
+/// The bubble's own decoration (background, radius, shadow).
+BoxDecoration _bubbleBox(WidgetTester tester) =>
+    tester
+            .widget<Container>(
+              find
+                  .descendant(
+                    of: _mascotBubble(),
+                    matching: find.byType(Container),
+                  )
+                  .first,
+            )
+            .decoration!
+        as BoxDecoration;
+
 void main() {
   testWidgets(
     'renders one raised Exercise card (surface-raised / rounded md)',
@@ -176,18 +221,7 @@ void main() {
 
     final container = _container();
     addTearDown(container.dispose);
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(
-          theme: appTheme(Brightness.light),
-          home: const MediaQuery(
-            data: MediaQueryData(textScaler: TextScaler.linear(2.2)),
-            child: IntervalExerciseScreen(),
-          ),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_scaledApp(container));
     await _settleFirstMotif(tester, container);
 
     // Answer to lay out the result line + "Continuar" too.
@@ -195,6 +229,38 @@ void main() {
     await tester.tap(find.text(_state(container).answer.nameUi));
     await tester.pump();
 
+    final overflow = errors
+        .where((e) => e.exceptionAsString().contains('overflowed'))
+        .toList();
+    expect(overflow, isEmpty, reason: overflow.map((e) => '$e').join('\n'));
+  });
+
+  testWidgets('the mascot bubble does not overflow at TextScaler.linear(2.2)', (
+    tester,
+  ) async {
+    // The wrong branch is the one text scaling hits hardest — the bubble is
+    // the largest text surface on the screen, and the correct-answer gate
+    // above never lays it out. Its own test rather than a second `pumpWidget`
+    // in that one: unmounting a scope leaves an unflushed auto-dispose timer.
+    final errors = <FlutterErrorDetails>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = errors.add;
+    addTearDown(() => FlutterError.onError = previous);
+
+    final container = _container();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_scaledApp(container));
+    await _settleFirstMotif(tester, container);
+
+    final s = _state(container);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(
+      find.text(s.options.firstWhere((o) => o.id != s.answer.id).nameUi),
+    );
+    await tester.pump();
+    await tester.pumpAndSettle(); // the screen reveals "Continuar"
+
+    expect(_mascotBubble(), findsOneWidget);
     final overflow = errors
         .where((e) => e.exceptionAsString().contains('overflowed'))
         .toList();
@@ -293,8 +359,10 @@ void main() {
       containsAllInOrder(<String>['sax_c4', 'sax_e4', 'sax_g4']),
     );
 
-    // No mascot (no Fredoka text anywhere).
+    // No mascot (no Fredoka text anywhere): EXPERIENCE.md keeps a right answer
+    // visual + sonic so the session's rhythm is not interrupted.
     expect(_fredoka(), findsNothing);
+    expect(_mascotBubble(), findsNothing);
 
     // The correct option is highlighted in the positive token, no red on screen.
     final optionButton = tester.widget<FilledButton>(
@@ -336,7 +404,9 @@ void main() {
   });
 
   testWidgets('wrong answer: gentle state, reveals correct, logs the '
-      'ErrorType, no saturated red, no mascot', (tester) async {
+      'ErrorType, no saturated red, mascot explains the confusion', (
+    tester,
+  ) async {
     final container = _container();
     addTearDown(container.dispose);
     await tester.pumpWidget(_app(container));
@@ -362,10 +432,22 @@ void main() {
     );
     expect(attempt.reactionTimeMs, closeTo(800, 60));
 
-    expect(find.textContaining('Não foi dessa vez'), findsOneWidget);
+    // FR-4: the mascot names the confused pair, never a bare "errado".
+    expect(_mascotBubble(), findsOneWidget);
+    final message = _bubbleText(tester);
+    expect(message, contains(answer.nameUi));
+    expect(message, contains(wrong.nameUi));
+    expect(
+      message,
+      errorExplanation(
+        answer: answer,
+        picked: wrong,
+        errorType: attempt.errorType,
+      ),
+      reason: 'the sentence is built in domain/, not in the widget',
+    );
     expect(find.textContaining(answer.nameUi), findsWidgets);
     expect(find.text('Continuar'), findsOneWidget);
-    expect(_fredoka(), findsNothing);
 
     final wrongButton = tester.widget<FilledButton>(
       find
@@ -379,6 +461,10 @@ void main() {
     expect(bg, isNot(CatColors.scaffoldDissonant));
     expect(bg, CatColors.surfaceBase);
 
+    // No `ensureVisible` here on purpose: the screen scrolls "Continuar" into
+    // view itself after a wrong answer, and a tap that misses the viewport
+    // does not dispatch — so this tap is the placement guard.
+    await tester.pumpAndSettle(); // the screen reveals "Continuar"
     await tester.tap(find.text('Continuar'));
     await tester.pump();
     expect(_state(container).index, 1);
@@ -399,17 +485,23 @@ void main() {
     await tester.pump();
     expect(find.text('Continuar'), findsOneWidget);
 
-    // Now make the replay fail.
+    // Now make the replay fail. The card has scrolled down to reveal
+    // "Continuar", so scroll back up the way a learner asking for another
+    // listen would — the replay button is above the bubble on this card.
     fake.unplayableRefs.add(s.current.audioSampleRefs.first);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Ouvir de novo'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Ouvir de novo'));
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
     await tester.pump();
 
     expect(find.textContaining('O som não tocou'), findsOneWidget);
-    expect(find.textContaining('Não foi dessa vez'), findsOneWidget);
+    expect(_mascotBubble(), findsOneWidget);
     expect(find.text('Continuar'), findsOneWidget);
 
+    await tester.pumpAndSettle(); // the screen reveals "Continuar"
     await tester.tap(find.text('Continuar'));
     await tester.pump();
     expect(_state(container).index, 1);
@@ -751,7 +843,8 @@ void main() {
     final attempt = _state(container).attempts.single;
     expect(attempt.exerciseType, ExerciseType.chord);
     expect(attempt.errorType, isIn(chordErrorTypes.toList()));
-    expect(find.textContaining('Não foi dessa vez'), findsOneWidget);
+    expect(_mascotBubble(), findsOneWidget);
+    expect(_bubbleText(tester), contains(s.answer.nameUi));
     expect(find.text('Continuar'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -795,6 +888,196 @@ void main() {
     expect(intervalErrorTypes, isNot(contains(attempt.errorType)));
     expect(find.text('Continuar'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  // ---- Story 1.6: the mascot's explanation on a wrong answer ----
+
+  testWidgets('the bubble is a bubble: accent-soft, rounded/lg, warm shadow, '
+      'Fredoka, announced as a live region', (tester) async {
+    final container = _container();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester, container);
+
+    final s = _state(container);
+    final wrong = s.options.firstWhere((o) => o.id != s.answer.id);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text(wrong.nameUi));
+    await tester.pump();
+
+    expect(_mascotBubble(), findsOneWidget);
+
+    final box = _bubbleBox(tester);
+    expect(box.color, CatColors.accentSoft);
+    expect(
+      box.borderRadius,
+      BorderRadius.circular(CatRadii.lg),
+      reason: 'rounded/lg is reserved for the mascot bubble (UX-DR4)',
+    );
+    expect(box.boxShadow, isNotEmpty, reason: 'floats above the card');
+
+    // The single Fredoka style in the app, and nothing else uses it.
+    final text = tester.widget<Text>(
+      find.descendant(of: _mascotBubble(), matching: find.byType(Text)),
+    );
+    expect(text.style?.fontFamily, CatText.display.fontFamily);
+    expect(text.style?.fontWeight, CatText.display.fontWeight);
+    expect(text.style?.color, CatColors.inkPrimary);
+    expect(_fredoka(), findsOneWidget);
+
+    // Inline and additive: no route was pushed, nothing stacked.
+    expect(find.byType(Dialog), findsNothing);
+    expect(find.byType(IntervalExerciseScreen), findsOneWidget);
+
+    // Screen readers get it, as _ResultLine always did.
+    expect(
+      tester
+          .widgetList<Semantics>(
+            find.descendant(
+              of: _mascotBubble(),
+              matching: find.byType(Semantics),
+            ),
+          )
+          .any((s) => s.properties.liveRegion ?? false),
+      isTrue,
+      reason: 'the bubble must not lose the liveRegion announcement',
+    );
+  });
+
+  testWidgets('"Continuar" stays inside a 360x640 viewport after a wrong '
+      'answer', (tester) async {
+    // The regression this guards: the bubble is the tallest thing on the card
+    // and pushed the only way forward ~148 px below the fold on a small phone.
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final container = _container();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester, container);
+
+    final s = _state(container);
+    final wrong = s.options.firstWhere((o) => o.id != s.answer.id);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text(wrong.nameUi));
+    await tester.pump();
+    expect(_mascotBubble(), findsOneWidget);
+
+    // The screen scrolls it into view itself — no `ensureVisible` from here.
+    await tester.pumpAndSettle();
+    final button = tester.getRect(
+      find.widgetWithText(FilledButton, 'Continuar'),
+    );
+    expect(button.bottom, lessThanOrEqualTo(640.0));
+    expect(button.top, greaterThanOrEqualTo(0.0));
+
+    // And it actually advances, which a tap outside the viewport would not.
+    await tester.tap(find.text('Continuar'));
+    await tester.pump();
+    expect(_state(container).index, 1);
+  });
+
+  testWidgets('the bubble is the dark tokens in dark mode', (tester) async {
+    final container = _container();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container, brightness: Brightness.dark));
+    await _settleFirstMotif(tester, container);
+
+    final s = _state(container);
+    final wrong = s.options.firstWhere((o) => o.id != s.answer.id);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text(wrong.nameUi));
+    await tester.pump();
+
+    expect(_bubbleBox(tester).color, CatColors.accentSoftDark);
+    final text = tester.widget<Text>(
+      find.descendant(of: _mascotBubble(), matching: find.byType(Text)),
+    );
+    expect(text.style?.color, CatColors.inkPrimaryDark);
+  });
+
+  testWidgets('no bubble while the motif plays, nor before an answer', (
+    tester,
+  ) async {
+    final container = _container();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+
+    await tester.pump(); // catalog future resolves
+    await tester.pump(); // _ActiveExerciseView mounts
+    await tester.pump(); // the motif starts
+    expect(
+      _mascotBubble(),
+      findsNothing,
+      reason: 'never during the exercise audio (UX-DR4)',
+    );
+
+    await tester.pump(_state(container).current.motifTotal);
+    await tester.pump();
+    expect(
+      _mascotBubble(),
+      findsNothing,
+      reason: 'nothing picked yet — no bubble, no exception',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a one-degree scale error: the bubble names the degree, not the '
+      'two modes', (tester) async {
+    final container = _container(types: const {ExerciseType.scale});
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester, container);
+
+    final s = _state(container);
+    // The pool is all 4 modes and each has exactly one one-degree neighbour,
+    // so an altered-degree distractor is always on screen.
+    final oneDegreeOff = s.options.firstWhere(
+      (o) =>
+          o.id != s.answer.id &&
+          alteredDegreeNames.containsKey(_scaleError(s.answer, o)),
+    );
+    final degree = alteredDegreeNames[_scaleError(s.answer, oneDegreeOff)]!;
+
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text(oneDegreeOff.nameUi));
+    await tester.pump();
+
+    final message = _bubbleText(tester);
+    expect(message, contains(degree), reason: 'the degree is the lesson');
+    expect(message, contains(s.answer.nameUi));
+    expect(
+      _state(container).attempts.single.errorType,
+      isIn(<ErrorType>[
+        ErrorType.tercaAlterada,
+        ErrorType.sextaAlterada,
+        ErrorType.setimaAlterada,
+      ]),
+    );
+  });
+
+  testWidgets('a far-miss scale error still names what it was', (tester) async {
+    final container = _container(types: const {ExerciseType.scale});
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester, container);
+
+    final s = _state(container);
+    final farOff = s.options.firstWhere(
+      (o) =>
+          o.id != s.answer.id && _scaleError(s.answer, o) == ErrorType.farMiss,
+    );
+
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text(farOff.nameUi));
+    await tester.pump();
+
+    expect(_state(container).attempts.single.errorType, ErrorType.farMiss);
+    final message = _bubbleText(tester);
+    expect(message, contains(s.answer.nameUi));
+    expect(message, contains(farOff.nameUi));
+    expect(message.toLowerCase(), isNot(contains('errado')));
   });
 
   testWidgets('a correct chord answer flourishes and advances, like interval', (

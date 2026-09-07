@@ -24,6 +24,12 @@ abstract final class CatColors {
   static const inkSecondary = Color(0xFF7E6F62);
   static const inkDisabled = Color(0xFFC9BDAF);
   static const accent = Color(0xFFFFC067);
+
+  /// Mascot-bubble / soft-highlight fill. **Text on it must be [inkPrimary].**
+  /// `ink-secondary` on `accent-soft` is 3.62:1 — below AA — so only the
+  /// primary ink (9.86:1) may be drawn here. `test/contrast_test.dart` guards
+  /// the primary pair; it deliberately does not add `accent-soft` to the
+  /// background maps, which would fail on a pair the app never renders.
   static const accentSoft = Color(0xFFFBD9B8);
   static const effortTrack = Color(0xFFC67F17);
   static const skillTrack = Color(0xFF5C9C78);
@@ -38,6 +44,9 @@ abstract final class CatColors {
   static const inkSecondaryDark = Color(0xFFC4B3A0);
   static const inkDisabledDark = Color(0xFF6E6255);
   static const accentDark = Color(0xFFFFC067);
+
+  /// Dark counterpart of [accentSoft], same constraint: [inkPrimaryDark] is
+  /// 7.55:1 on it, `ink-secondary-dark` only 4.37:1.
   static const accentSoftDark = Color(0xFF5A4633);
   static const effortTrackDark = Color(0xFFF2B85C);
   static const skillTrackDark = Color(0xFF9BCBAE);

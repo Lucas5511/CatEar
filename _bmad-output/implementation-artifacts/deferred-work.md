@@ -433,3 +433,17 @@ número (1.10 é Settings, 1.6 é feedback de erro) só empurraria o item para u
 story cuja intenção o exclui — que é exatamente como eles chegaram até aqui.
 Quando a story de UI e a de robustez de áudio forem criadas, estes três itens
 recebem o número correspondente.
+
+## Deferred from: step-04 review de spec-1-6 (2026-09-07, review_loop 0)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-6-feedback-explicativo-em-erro.md`
+  summary: O balão do mascote não tem mascote — é um `Container` com um `Text`, sem ilustração do gatinho, avatar ou rabicho que o faça ler como *fala* em vez de destaque.
+  evidence: `DESIGN.md:61` define o mascote como "um gatinho professor gentil, num estilo cartunesco vetorial flat com contornos grossos… guia emocional". A Story 1.6 entregou os tokens que a spec pediu (`accent-soft`, `rounded/lg`, sombra quente, Fredoka), e o asset nunca esteve no escopo dela — mas sem este registro a componente parece concluída. Precisa de decisão de produto sobre o asset (sourcing/licença, como as amostras de áudio precisaram) antes de virar story.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-6-feedback-explicativo-em-erro.md`
+  summary: `_MascotBubble` é privado de `interval_exercise_screen.dart`, mas o design pede o balão em quatro lugares — boas-vindas do nivelamento, feedback de erro, celebração de vitória e resumo de sessão.
+  evidence: `DESIGN.md:102` e `EXPERIENCE.md:48` listam os quatro. Não existe camada de widgets compartilhados (`lib/core/` tem só `database/` e `theme/`). O custo já apareceu nesta story: `integration_test/catear_e2e_test.dart` identifica o balão por `fontFamily == 'Fredoka'` justamente porque a classe é inalcançável de fora. As Stories 1.7 e 1.9 vão duplicá-lo se nada mudar — decidir onde mora um widget compartilhado é decisão de arquitetura (Ask First).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-6-feedback-explicativo-em-erro.md`
+  summary: `ErrorType.octaveError` existe na taxonomia mas nada o produz — nenhuma resposta errada pode resolver para ele hoje, então o app não sabe dizer "você acertou a nota, errou a oitava".
+  evidence: `ExerciseAttempt.errorTypeFor` resolve um pick de intervalo por id dentro de `intervalErrorTypes`, cujo membro de oitava é `ErrorType.p8` (o intervalo de oitava justa); nenhum id de catálogo é `octave-error`, e acorde/escala/resolução também não o alcançam. Detecção real de salto de oitava (mesma classe de altura, registro diferente) exige mudar `errorTypeFor` — o Never explícito da Story 1.6 ("Mudar `ErrorType`, a taxonomia, ou como `ExerciseAttempt.errorTypeFor` resolve"), então a 1.6 removeu o ramo morto de `error_explanation.dart` em vez de mantê-lo inalcançável. A linha da matriz de I/O da spec que descrevia esse caminho estava errada. Uma story posterior que mexa em `errorTypeFor` é a dona: produzir o `errorType` e devolver a frase própria.

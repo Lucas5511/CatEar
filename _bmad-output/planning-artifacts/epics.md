@@ -230,11 +230,11 @@ So that o erro vire aprendizado e não só punição.
 
 **Acceptance Criteria:**
 
-- **Given** uma resposta incorreta, **when** o usuário responde, **then** um mascot bubble (`rounded/lg`, fundo `accent-soft`, sombra quente acima do conteúdo) aparece com uma explicação que nomeia o conceito confundido (ex: "Quase lá — você confundiu 3ª maior com 3ª menor") (FR-4, UX-DR4).
+- **Given** uma resposta incorreta, **when** o usuário responde, **then** um mascot bubble (`rounded/lg`, fundo `accent-soft`, sombra quente acima do conteúdo) aparece com uma explicação que nomeia o conceito confundido, usando os `nameUi` do catálogo (ex: "Quase lá — você confundiu terça maior com terça menor") (FR-4, UX-DR4).
 - O `errorType` da tentativa vem da taxonomia canônica do Currículo, nunca string livre (AR-4, AR-8).
-- **Given** uma resposta errada que não casa com nenhum `errorType` do catálogo (`errorType == null`), **when** o feedback é exibido, **then** o mascote usa uma explicação genérica-mas-acolhedora que ainda nomeia o que era o certo (ex: "A resposta era 5ª justa — ouça de novo o salto entre as notas"), nunca só "errado".
+- **Given** uma resposta errada cujo par (certo, escolhido) não tem confusão única a nomear, **when** o feedback é exibido, **then** o `errorType` é `far-miss` — nunca `null` (a Story 1.5a tornou `null` inalcançável numa resposta errada, de propósito: `null` ou exceção no meio da sessão derrubava a tela) — e o mascote usa uma explicação acolhedora que ainda nomeia o que era o certo e convida a ouvir de novo, nunca só "errado".
 - Nenhuma tela de erro mostra apenas "errado"/"incorreto" sem explicação; sem vermelho saturado (UX-DR14).
-- O modal de explicação empilha só um nível.
+- A explicação é um balão inline dentro do card do exercício — sem rota, sem `showDialog`, nada empilhado na navegação. (Era "o modal de explicação empilha só um nível"; a restrição herdada da 1.1 continua valendo, e um balão que não empilha nada a satisfaz trivialmente. Corrigido na Story 1.6, que não construiu um modal: `EXPERIENCE.md` pede "um bubble curto, sem tela cheia de bloqueio".)
 
 ### Story 1.7: Estrutura de sessão de 10–15 minutos
 

@@ -5,8 +5,10 @@
 /// Exercise card at a time: the exercise plays as a short rhythmic motif (never
 /// an isolated dyad), replay is free, the answer is a tap on 4 generated
 /// options, a correct answer gets an immediate visual + sonic flourish (no
-/// mascot), and every attempt's reaction time is captured into an
-/// [ExerciseAttempt] that is logged (no persistence — that is Story 1.7).
+/// mascot), a wrong one gets the mascot's bubble naming the confusion
+/// (Story 1.6, sentence built in `../domain/error_explanation.dart`), and every
+/// attempt's reaction time is captured into an [ExerciseAttempt] that is logged
+/// (no persistence — that is Story 1.7).
 ///
 /// Nothing here knows which *kind* of exercise it is showing: it consumes
 /// [ExerciseQuestion] / [AnswerOption] and the per-type difference lives in
@@ -26,6 +28,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../domain/error_explanation.dart';
 import '../domain/exercise_attempt.dart';
 import '../domain/exercise_question.dart';
 import '../domain/interval_options.dart';
@@ -228,6 +231,13 @@ class _ActiveExerciseViewState extends ConsumerState<_ActiveExerciseView> {
 
   Timer? _advanceTimer;
 
+  /// Anchors "Continuar" so it can be scrolled to. The mascot bubble is the
+  /// tallest thing on the card, and on a 360x640 phone it pushes the advance
+  /// button ~148 px below the fold — the learner would have to go looking for
+  /// the only way forward.
+  final GlobalKey _continueKey = GlobalKey();
+  bool _continueRevealed = false;
+
   PracticeState get _s => widget.state;
 
   @override
@@ -333,7 +343,29 @@ class _ActiveExerciseViewState extends ConsumerState<_ActiveExerciseView> {
       if (!mounted) return;
       _advanceTimer?.cancel();
       _advanceTimer = Timer(_timings.advanceDelay, _advance);
+    } else {
+      // A correct answer auto-advances; a wrong one waits on "Continuar", so
+      // that button has to be reachable without hunting for it.
+      _revealContinue();
     }
+  }
+
+  /// Scrolls the card so "Continuar" sits inside the viewport. Runs after the
+  /// frame that first lays the button out, and only once per exercise — a
+  /// later replay must not yank the card while the learner is reading.
+  void _revealContinue() {
+    if (_continueRevealed) return;
+    _continueRevealed = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final target = _continueKey.currentContext;
+      if (target == null) return;
+      Scrollable.ensureVisible(
+        target,
+        alignment: 1,
+        duration: const Duration(milliseconds: 200),
+      );
+    });
   }
 
   void _advance() {
@@ -382,6 +414,7 @@ class _ActiveExerciseViewState extends ConsumerState<_ActiveExerciseView> {
             _ResultLine(state: s),
             const SizedBox(height: CatSpacing.x4),
             SizedBox(
+              key: _continueKey,
               width: double.infinity,
               child: FilledButton(
                 onPressed: _advance,
@@ -477,6 +510,12 @@ class _OptionButton extends StatelessWidget {
   }
 }
 
+/// The line under the options once an exercise is answered.
+///
+/// Correct: the plain celebratory line, no mascot — `EXPERIENCE.md` is explicit
+/// that a right answer stays visual + sonic so the session keeps its rhythm.
+/// Wrong: the mascot's bubble, whose sentence is built in `domain/`
+/// ([errorExplanation]); nothing here knows which kind of exercise it was.
 class _ResultLine extends StatelessWidget {
   const _ResultLine({required this.state});
 
@@ -485,16 +524,86 @@ class _ResultLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final correct = state.phase == AnswerPhase.correct;
-    final text = correct
-        ? 'Isso! ${state.answer.nameUi}.'
-        : 'Não foi dessa vez. Era ${state.answer.nameUi}.';
+    // Fails closed: only an explicitly correct phase gets congratulated, so an
+    // unexpected phase falls through to the explanation rather than cheering.
+    if (state.phase == AnswerPhase.correct) {
+      return Semantics(
+        liveRegion: true,
+        child: Text(
+          'Isso! ${state.answer.nameUi}.',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.titleSmall,
+        ),
+      );
+    }
+    // The attempt just recorded for this exercise. Read defensively: the last
+    // attempt is only this exercise's mistake while nothing re-answers a card,
+    // so a correct one is not this error and is dropped —
+    // `errorExplanation` still names the right answer from a null pair.
+    final last = state.attempts.isEmpty ? null : state.attempts.last;
+    final attempt = (last != null && !last.wasCorrect) ? last : null;
+    return _MascotBubble(
+      message: errorExplanation(
+        answer: state.answer,
+        picked: state.picked,
+        errorType: attempt?.errorType,
+      ),
+    );
+  }
+}
+
+/// The mascot's speech bubble (UX-DR4): `rounded/lg`, `accent-soft`, a warm
+/// shadow floating it above the card, and the app's only Fredoka style.
+///
+/// Inline and additive — never a route, never a `showDialog`. `EXPERIENCE.md`
+/// asks for "um bubble curto, sem tela cheia de bloqueio", and the epic's
+/// "o modal empilha só um nível" is satisfied by stacking nothing at all.
+class _MascotBubble extends StatelessWidget {
+  const _MascotBubble({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final background = isDark ? CatColors.accentSoftDark : CatColors.accentSoft;
+    // Verified against `accent-soft` in `test/contrast_test.dart` (>= 4.5:1 in
+    // both themes). No red anywhere — UX-DR14, and the palette has none.
+    final ink = isDark ? CatColors.inkPrimaryDark : CatColors.inkPrimary;
+
     return Semantics(
       liveRegion: true,
-      child: Text(
-        text,
-        textAlign: TextAlign.center,
-        style: theme.textTheme.titleSmall,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: CatSpacing.x5,
+          vertical: CatSpacing.x4,
+        ),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(CatRadii.lg),
+          boxShadow: [
+            BoxShadow(
+              // Warm, never a cold grey (DESIGN.md § Elevation & Depth).
+              color: (isDark ? CatColors.surfaceBaseDark : CatColors.inkPrimary)
+                  .withValues(alpha: isDark ? 0.55 : 0.16),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Text(
+          message,
+          textAlign: TextAlign.center,
+          // `CatText.display` stays the app's single Fredoka source; only the
+          // scale is stepped down, because 28 is a headline size and this is a
+          // two-clause sentence inside a card. Family and weight — the mascot's
+          // voice — come from the token untouched.
+          style: CatText.display.copyWith(
+            fontSize: 20,
+            height: 1.35,
+            color: ink,
+          ),
+        ),
       ),
     );
   }

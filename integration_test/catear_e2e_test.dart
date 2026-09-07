@@ -123,6 +123,59 @@ const _playTimeout = Duration(seconds: 15);
   return (container: container, service: sub.read());
 }
 
+/// The label of the option the screen marked as the right answer.
+///
+/// After answering, the correct button is filled with the positive scaffold
+/// token — that highlight is how the answer is legible from out here, since
+/// the practice state lives behind a private `presentation/` provider.
+String revealedAnswerLabel(WidgetTester tester) {
+  final highlighted = find.byWidgetPredicate((w) {
+    if (w is! FilledButton) return false;
+    final bg = w.style?.backgroundColor?.resolve(const <WidgetState>{});
+    return bg == CatColors.scaffoldConsonant ||
+        bg == CatColors.scaffoldConsonantDark;
+  });
+  expect(
+    highlighted,
+    findsOneWidget,
+    reason: 'answering must reveal the correct option',
+  );
+  return tester
+      .widget<Text>(
+        find.descendant(of: highlighted, matching: find.byType(Text)).first,
+      )
+      .data!;
+}
+
+/// Asserts the screen landed on a result that actually says something.
+///
+/// Correct: the celebratory line names the answer. Wrong: the mascot bubble is
+/// there (it carries the app's only Fredoka text, which is what identifies it
+/// from out here — its widget class is private to
+/// `lib/exercicios/presentation/`) **and its sentence names the answer**. That
+/// last part is FR-4 itself; matching the font alone would pass on an empty or
+/// wrong sentence.
+void expectExplainedResult(WidgetTester tester) {
+  final answer = revealedAnswerLabel(tester);
+  if (find.textContaining('Isso!').evaluate().isNotEmpty) {
+    expect(find.textContaining('Isso! $answer'), findsOneWidget);
+    return;
+  }
+  final bubble = find.byWidgetPredicate(
+    (w) => w is Text && w.style?.fontFamily == 'Fredoka',
+  );
+  expect(
+    bubble,
+    findsOneWidget,
+    reason: 'a wrong answer must get the mascot bubble, never a bare verdict',
+  );
+  expect(
+    tester.widget<Text>(bubble).data,
+    contains(answer),
+    reason: 'FR-4: the explanation names the concept that was actually played',
+  );
+}
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -317,14 +370,7 @@ void main() {
       await tester.tap(options.first);
       await tester.pumpAndSettle();
 
-      final resultLine =
-          find.textContaining('Isso!').evaluate().isNotEmpty ||
-          find.textContaining('Não foi dessa vez').evaluate().isNotEmpty;
-      expect(
-        resultLine,
-        isTrue,
-        reason: 'answering must land on a correct or incorrect result line',
-      );
+      expectExplainedResult(tester);
     });
 
     // Story 1.5 gave chord and scale their own contours, and they are a
@@ -362,12 +408,7 @@ void main() {
       await tester.tap(options.first);
       await tester.pumpAndSettle();
 
-      expect(
-        find.textContaining('Isso!').evaluate().isNotEmpty ||
-            find.textContaining('Não foi dessa vez').evaluate().isNotEmpty,
-        isTrue,
-        reason: 'answering must land on a correct or incorrect result line',
-      );
+      expectExplainedResult(tester);
     }
 
     testWidgets('Praticar plays a real chord motif (block, arpeggio, block)', (
