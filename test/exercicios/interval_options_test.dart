@@ -13,7 +13,9 @@ void main() {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     final curriculum = await container.read(curriculoRepositoryProvider).load();
-    pool = practicePool(curriculum);
+    // The default loop is mixed since Story 1.5; these cases are about the
+    // interval ranking, so they take the interval slice of the pool.
+    pool = practicePool(curriculum)[ExerciseType.interval]!;
     spec = (id) => pool.firstWhere((s) => s.id == id);
   });
 
@@ -102,7 +104,7 @@ void main() {
     final chordPool = practicePool(
       curriculum,
       types: const {ExerciseType.chord},
-    );
+    )[ExerciseType.chord]!;
     final major = chordPool.firstWhere((o) => o.id == 'major');
     final chordOptions = answerOptionsFor(major, chordPool, seed: 11);
     expect(chordOptions.length, 4);
@@ -111,7 +113,7 @@ void main() {
     final scalePool = practicePool(
       curriculum,
       types: const {ExerciseType.scale},
-    );
+    )[ExerciseType.scale]!;
     final scaleMajor = scalePool.firstWhere((o) => o.id == 'major');
     final mixolydian = scalePool.firstWhere((o) => o.id == 'mixolydian');
     final naturalMinor = scalePool.firstWhere((o) => o.id == 'natural_minor');
@@ -121,6 +123,28 @@ void main() {
       lessThan(scaleMajor.distanceTo(naturalMinor)),
     );
     expect(answerOptionsFor(scaleMajor, scalePool, seed: 11).length, 4);
+  });
+
+  test('a missing pool for the question type fails loudly', () async {
+    // Falling back to an empty pool would ship a card with a single button on
+    // it — an exercise that answers itself. Unreachable while the loop and the
+    // pool come from the same `practicePool` call, and nothing said so.
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final curriculum = await container.read(curriculoRepositoryProvider).load();
+    final chordQuestion = practiceLoop(
+      curriculum,
+      types: const {ExerciseType.chord},
+    ).first;
+
+    expect(
+      () => answerOptionsForQuestion(
+        chordQuestion,
+        practicePool(curriculum, types: const {ExerciseType.scale}),
+        seed: 1,
+      ),
+      throwsA(isA<ArgumentError>()),
+    );
   });
 
   test('pool smaller than 4 returns what there is, still includes answer', () {

@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-01-2026 12:00
-last_updated: 09-06-2026 09:00
+last_updated: 09-06-2026 16:30
 project: CatEar
 project_key: NOKEY
 tracking_system: file-system
@@ -42,8 +42,8 @@ development_status:
   1-3b-produção-do-conjunto-de-amostras-de-áudio-da-v1: done
   1-4-exercício-de-reconhecimento-de-intervalo-em-contexto-musical: done
   1-4b-produção-das-tríades-e-expansão-dos-catálogos: done
-  1-5a-seam-type-agnostic-do-fluxo-de-prática: review
-  1-5-exercícios-de-reconhecimento-de-acordes-e-escalas: backlog
+  1-5a-seam-type-agnostic-do-fluxo-de-prática: done
+  1-5-exercícios-de-reconhecimento-de-acordes-e-escalas: review
   1-6-feedback-explicativo-em-erro: backlog
   1-7-estrutura-de-sessão-de-10-15-minutos: backlog
   1-8-geração-de-variações-anti-decoreba: backlog
@@ -199,3 +199,32 @@ action_items:
       verde (e2e 18/18); reprodução em device iOS continua sem verificação —
       build-ios cobre só compilação."
     ref: "_bmad-output/implementation-artifacts/session-retro-2026-09-03.md"
+  - id: "story-1-5-retriagem-ui-themeextension-catcolors"
+    epic: 1
+    action: "Criar a story de UI que resolve o `ThemeExtension` de `CatColors` —
+      hoje `_OptionButton` e `ExerciseCard` decidem cor por
+      `brightness == dark ? xDark : x` na mão. Re-triado da 1.5 em 2026-09-06
+      por decisão do humano: é refatoração de tema, não de exercício."
+    owner: "planejamento"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/deferred-work.md"
+  - id: "story-1-5-retriagem-robustez-de-audio"
+    epic: 1
+    action: "Criar a story de robustez de áudio que resolve os dois itens do
+      módulo `audio`: tradução determinística de
+      `PlayerException`/`PlatformException` em `SamplePlaybackFailed`, e o
+      `ArgumentError` cru de `audioAssetKeyFor`. Re-triados da 1.5 em
+      2026-09-06 por decisão do humano."
+    owner: "planejamento"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/deferred-work.md"
+  - id: "story-1-5-divida-de-nomes-interval-prefixo"
+    epic: 1
+    action: "Renomear o que ficou com prefixo `interval` guardando código
+      type-agnostic desde a 1.5a: `interval_practice.dart`,
+      `interval_options.dart`, `interval_exercise_screen.dart`,
+      `IntervalPractice`, `intervalPracticeProvider`, `IntervalExerciseScreen`
+      e os dois testes correspondentes. Alcança `home_screen.dart`."
+    owner: "dev"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/spec-1-5-exercicios-de-reconhecimento-de-acordes-e-escalas.md"

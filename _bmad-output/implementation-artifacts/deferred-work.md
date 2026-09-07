@@ -164,7 +164,12 @@ retêm como itens com dono, não follow-up genérico.
   houver um fixture de `.wav` deliberadamente corrompido carregado de fora de
   `assets/` (ou um `AudioSource` mock). **Re-triado 2026-09-03** de
   `owner: dev da 1.4` (encerrada sem executá-lo) para a próxima story que
-  mexe no consumidor de áudio. owner: dev da 1.5.
+  mexe no consumidor de áudio. **Re-triado 2026-09-06** de `owner: dev da 1.5`
+  para `owner: dev da story de robustez de áudio (sem número; a criar)` —
+  decisão do humano registrada no bloco congelado da spec da 1.5: o item é do
+  módulo `audio`, que a 1.5 não toca. A 1.5 consome `AudioService.playSample`
+  exatamente como a 1.4 já consumia; "mexer no consumidor" era a premissa da
+  re-triagem de 2026-09-03 e ela não se realizou.
   evidence: `lib/audio/data/audio_service_impl.dart` — `catch (e) { if (e is! Exception && e is! FlutterError) rethrow; … }`; só o ramo `FlutterError` é exercido pelo teste de integração.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-3b-producao-do-conjunto-de-amostras-de-audio-da-v1.md`
   summary: `_JustAudioService.playSample` com `ref` malformado propaga o
@@ -175,7 +180,11 @@ retêm como itens com dono, não follow-up genérico.
   a story que herdar isto deve decidir: `playSample` embrulha `ArgumentError`
   em `SamplePlaybackFailed`, ou "ref malformado" é contrato-quebrado do
   chamador (e o doc-comment é ajustado para dizer isso). **Re-triado
-  2026-09-03** de `owner: dev da 1.4` (encerrada sem decidir). owner: dev da 1.5.
+  2026-09-03** de `owner: dev da 1.4` (encerrada sem decidir). **Re-triado
+  2026-09-06** de `owner: dev da 1.5` para
+  `owner: dev da story de robustez de áudio (sem número; a criar)`, junto do
+  item acima e pela mesma razão: é contrato do módulo `audio`, e a 1.5 não
+  altera nenhum caminho de `playSample`.
   evidence: `lib/audio/domain/audio_assets.dart` — `audioAssetKeyFor` lança `ArgumentError`; `_JustAudioService.playSample` chama-o dentro do `try` mas o guard `e is! Exception` deixa `ArgumentError` (que é `Error`) subir cru.
 
 ## Deferred da review adversarial de spec-1-4 (2026-09-02)
@@ -185,7 +194,12 @@ retêm como itens com dono, não follow-up genérico.
   `Theme.of(context).brightness == dark ? xDark : x` na mão. Criar um
   `ThemeExtension` de `CatColors` (tokens semânticos — `scaffoldConsonant`,
   `surfaceRaised`, `borderHairline`…) resolvidos por brightness uma vez, para os
-  widgets de exercício (e 1.5+) não bifurcarem. owner: dev da 1.5.
+  widgets de exercício (e 1.5+) não bifurcarem. **Re-triado 2026-09-06** de
+  `owner: dev da 1.5` para `owner: dev da story de UI (sem número; a criar)` —
+  decisão do humano no bloco congelado da spec da 1.5: é refatoração de tema,
+  não de exercício. A 1.5 não acrescentou nenhuma bifurcação por brightness (as
+  duas existentes em `_OptionButton.build` continuam como estavam), então o item
+  não piorou e não tem por que ser feito sob a intenção desta story.
   evidence: `lib/exercicios/presentation/interval_exercise_screen.dart`
   (`_OptionButton.build`), `lib/exercicios/presentation/exercise_card.dart`.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-exercicio-de-reconhecimento-de-intervalo-em-contexto-musical.md`
@@ -196,6 +210,18 @@ retêm como itens com dono, não follow-up genérico.
   evidence: `lib/exercicios/presentation/phrase_player.dart` (construtor com
   `noteGap`/`returnHold`/`flourishGap`), `interval_exercise_screen.dart`
   (`_advanceTimer = Timer(const Duration(milliseconds: 700), _advance)`).
+  ✅ **RESOLVIDO na Story 1.5 (2026-09-06).** Deixou de ser opcional: a story
+  criou durações por tipo, e o `_motifDuration = 1800 ms` global do
+  `interval_exercise_screen_test.dart` passaria a estar errado para 16 dos 39
+  exercícios. Duas metades:
+  (a) o ritmo do motif saiu do `PhrasePlayer` e virou dado — cada `MotifEvent`
+  carrega o seu `hold`, e o helper `_settleFirstMotif` do widget test agora lê
+  `state.current.motifTotal` em vez de repetir um número à mão;
+  (b) o que sobrou de tempo na tela (`flourishGap` e os 700 ms do
+  `_advanceTimer`) virou `PracticeTimings` + `practiceTimingsProvider`,
+  sobrescritível por teste — exercitado em
+  `interval_exercise_screen_test.dart` ('the celebration delay comes from the
+  injected timings').
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-exercicio-de-reconhecimento-de-intervalo-em-contexto-musical.md`
   summary: O log de tentativa (`developer.log('$attempt', …)`) é stringly-typed
   via `toString()`. O consumidor da Story 1.7 lê `state.attempts` (estruturado),
@@ -325,11 +351,21 @@ e o gate não sabe distinguir, então isso fica como acordo, não como código.
   owner: dev da 1.5
   summary: `lib/exercicios/presentation/phrase_player.dart:7` ainda diz "within the 14 v1 samples"; são 22 desde a Story 1.4b (14 notas + 8 tríades).
   evidence: Real e verificado por leitura do arquivo. Não corrigido na 1.4b porque o bloco congelado tem `Never: tocar em lib/exercicios/**` e a AC exige `enums.dart` como única mudança em `lib/` — a intenção exclui a correção. A 1.5 já é dona desse arquivo (extração dos slots type-agnostic).
+  ✅ **RESOLVIDO na Story 1.5 (2026-09-06).** O parágrafo inteiro foi reescrito:
+  o doc-comment não conta amostras nem descreve um contorno fixo, porque o
+  contorno deixou de morar no player. Um número que envelhece a cada story de
+  produção de áudio saiu do arquivo em vez de ser atualizado.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4b-producao-das-triades-e-expansao-dos-catalogos.md`
   owner: dev da 1.5
   summary: O contrato posicional novo dos refs de acorde (`[tríade, fundamental, terça, quinta]`) não está documentado onde um consumidor olha — `lib/curriculo/domain/curriculum.dart:91-92` ainda descreve `audioSampleRefs` como "opaque sample tokens".
   evidence: Real. Um consumidor que passe os refs de um `ChordExercise` para `PhrasePlayer.playMotif` renderiza `tríade, fundamental, tríade`. Não corrigido na 1.4b pela mesma exclusão de intenção acima (seria mudança em `lib/` além de `enums.dart`); a 1.5 é a primeira consumidora.
+  ✅ **RESOLVIDO na Story 1.5 (2026-09-06).** `Exercise.audioSampleRefs` em
+  `lib/curriculo/domain/curriculum.dart` agora documenta o significado de cada
+  posição nos quatro tipos (`[bloco, fundamental, terça, quinta]` no acorde) e
+  aponta `lib/exercicios/domain/motif.dart` como o único consumidor desses
+  contratos. O `tríade, fundamental, tríade` que o item previa é exatamente o
+  que a 1.5 teria produzido: o contorno de 3 eventos virou contorno por tipo.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4b-producao-das-triades-e-expansao-dos-catalogos.md`
   summary: Nada liga a sequência de notas de um exercício `scale` aos `steps` do seu `scaleType`; a Story 1.4b dobrou essa superfície (4 modos, 8 exercícios, cada um com 8 tokens escritos à mão).
@@ -355,6 +391,13 @@ e o gate não sabe distinguir, então isso fica como acordo, não como código.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-5a-seam-type-agnostic-do-fluxo-de-pratica.md`
   owner: dev da 1.5
   summary: Ligar acorde e escala no loop de prática — a Story 1.5a entrega a maquinaria type-agnostic com o loop ainda só de intervalo; falta virar o filtro e dar forma musical aos dois tipos novos.
+  ✅ **RESOLVIDO na Story 1.5 (2026-09-06)** — é a própria story. `defaultPracticeTypes`
+  virou `{interval, chord, scale}` (loop de 39, `resolution` fora por
+  `requiresVoice`), o pool de distratores passou a ser `Map<ExerciseType,
+  List<AnswerOption>>` para que as alternativas nunca cruzem tipos, e o contorno
+  do motif virou dado do `ExerciseQuestion` (`lib/exercicios/domain/motif.dart`):
+  intervalo `r0,r1,r0` a 450/450/900 ms, acorde bloco→arpejo→bloco a
+  700/260×3/900 ms, escala as 8 notas a 270 ms com 450 ms na última (~2,34 s).
   evidence: A spec original ficou em ~4.350 tokens contra o alvo de 1.600, porque a refatoração toca `interval_exercise_screen.dart` (606 linhas) e `interval_exercise_screen_test.dart` (675 linhas, 21 `testWidgets`). Dividida em 2026-09-05 por decisão do humano: a 1.5a é refatoração pura de comportamento idêntico, revisável sozinha; a 1.5 vira uma mudança pequena em cima dela.
 
   **Decisões já tomadas pelo humano em 2026-09-05, para a spec da 1.5 herdar sem reabrir:**
@@ -366,3 +409,27 @@ e o gate não sabe distinguir, então isso fica como acordo, não como código.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-5a-seam-type-agnostic-do-fluxo-de-pratica.md`
   summary: `ExerciseQuestion.optionSeed` não é estável entre execuções — a ordem das alternativas na tela muda a cada abertura do app, embora o código e os testes afirmem determinismo.
   evidence: Medido em 2026-09-05 ao tentar escrever a golden de paridade da 1.5a. `optionSeed(index)` é `Object.hash(answer.id, variantKey, index)`, e `variantKey` é o enum `Direction`, cujo `hashCode` é de identidade e é re-sorteado a cada isolate. Três execuções da mesma posição do loop deram `dirHash` 274387664 / 279878334 / 157970473 e seeds 489118127 / 15087377 / 409236786, enquanto o `hashCode` do `id` (String) ficou fixo em 129053990. **Pré-existente**: a Story 1.4 já fazia `Object.hash(exercise.interval.id, exercise.direction, index)`. Passou despercebido porque `interval_options_test` só assere que o *mesmo* seed produz a mesma ordem, o que qualquer fórmula satisfaz. A golden da 1.5a contorna congelando a *seleção* (independente de ordem) com o seed real e a *ordenação* com um seed explícito. Correção: usar `variantKey` estável (`.name` ou `.index`) no hash. Decidir junto da Story 1.8, que é quem precisa de variação **controlada** em vez de acidental.
+
+## Triagem de owners (2026-09-06) — Story 1.5
+
+O gate `check_deferred_owners` acusou **7** itens com `owner: dev da 1.5` quando
+a story entrou em `in-progress`. É o gate funcionando como o achado 13 da review
+da 1.5a previu: os itens acumulados desde a 1.3b disparam de uma vez. Triagem
+decidida pelo humano em 2026-09-06 e registrada no bloco congelado da spec:
+
+| Item | Antes | Depois | Razão |
+|---|---|---|---|
+| Ligar acorde e escala no loop (split da 1.5) | `dev da 1.5` | ✅ resolvido | É a própria story. |
+| Contrato posicional dos refs de acorde (`curriculum.dart`) | `dev da 1.5` | ✅ resolvido | A 1.5 é a primeira consumidora do contrato; documentá-lo é pré-requisito do motif de acorde. |
+| Comentário "the 14 v1 samples" no `phrase_player.dart` | `dev da 1.5` | ✅ resolvido | O parágrafo foi reescrito pela própria mudança do player. |
+| Seam de injeção dos tempos (`PhrasePlayer`, `_advanceTimer`) | `dev da 1.5` | ✅ resolvido | Deixou de ser opcional: com durações por tipo, o `pump(1800 ms)` global dos widget tests ficaria errado para 16 dos 39 exercícios. |
+| `ThemeExtension` de `CatColors` | `dev da 1.5` | `dev da story de UI (sem número; a criar)` | Refatoração de tema, não de exercício. A 1.5 não acrescentou bifurcação por brightness. |
+| Tradução de `PlayerException`/`PlatformException` → `SamplePlaybackFailed` | `dev da 1.5` | `dev da story de robustez de áudio (sem número; a criar)` | Módulo `audio`, que esta story não toca. A premissa da re-triagem de 2026-09-03 ("a próxima story que mexe no consumidor de áudio") não se realizou: a 1.5 consome `playSample` como a 1.4 já consumia. |
+| `ArgumentError` cru de `audioAssetKeyFor` | `dev da 1.5` | `dev da story de robustez de áudio (sem número; a criar)` | Idem — decisão de contrato do módulo `audio`. |
+
+Os dois itens de áudio e o de tema ficam **sem número de story** de propósito: o
+gate só sabe cobrar uma story que existe no `sprint-status.yaml`, e inventar um
+número (1.10 é Settings, 1.6 é feedback de erro) só empurraria o item para uma
+story cuja intenção o exclui — que é exatamente como eles chegaram até aqui.
+Quando a story de UI e a de robustez de áudio forem criadas, estes três itens
+recebem o número correspondente.

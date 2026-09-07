@@ -38,12 +38,42 @@ part 'interval_exercise_screen.g.dart';
 
 /// Which exercise types the practice loop draws from.
 ///
-/// The product value is intervals only — Story 1.5 is what turns chord and
-/// scale on, because that is a visible change. It is a provider so a test can
-/// drive a chord or a scale exercise through this exact widget tree, which is
-/// the behavioural half of AC3 (the static half is Rule 6).
+/// The product value is every tappable type since Story 1.5. It stays a
+/// provider so a test can drive a single type through this exact widget tree,
+/// which is the behavioural half of AC3 (the static half is Rule 6).
 @riverpod
 Set<ExerciseType> practiceExerciseTypes(Ref ref) => defaultPracticeTypes;
+
+/// The screen's own timings — everything that is *not* the motif, whose rhythm
+/// rides on the question (`../domain/motif.dart`).
+///
+/// A seam rather than two `const Duration`s inline: Story 1.4 left the widget
+/// tests hard-coding `pump()` calls that matched the constants by hand, and
+/// Story 1.5 made the motif length vary per type, so a test that cannot state
+/// the timings it depends on becomes guesswork. Deferred item from the 1.4
+/// review, pulled in here.
+///
+/// **Read once, at mount.** `_ActiveExerciseViewState.initState` reads the
+/// provider and hands `flourishGap` to the `PhrasePlayer` it builds, so this is
+/// configuration for the screen's lifetime, not live state: overriding it after
+/// a view is mounted changes nothing until the next exercise mounts one.
+@immutable
+class PracticeTimings {
+  const PracticeTimings({
+    this.flourishGap = defaultFlourishGap,
+    this.advanceDelay = const Duration(milliseconds: 700),
+  });
+
+  /// Gap between the notes of the correct-answer flourish.
+  final Duration flourishGap;
+
+  /// How long a correct answer is celebrated before the loop auto-advances.
+  final Duration advanceDelay;
+}
+
+/// Override in tests to drive the screen with timings a test can name.
+@riverpod
+PracticeTimings practiceTimings(Ref ref) => const PracticeTimings();
 
 /// Owns the loop / attempt state. `UI → Notifier → domain` (AD-5): it reads the
 /// catalog through `curriculoRepositoryProvider` and never touches Drift.
@@ -67,12 +97,14 @@ class IntervalPractice extends _$IntervalPractice {
 
   static List<AnswerOption> _optionsFor(
     List<ExerciseQuestion> loop,
-    List<AnswerOption> pool,
+    Map<ExerciseType, List<AnswerOption>> pool,
     int index,
   ) {
     final question = loop[index];
-    return answerOptionsFor(
-      question.answer,
+    // Per-type pool: the alternatives for a chord are chord qualities, never
+    // an interval that happens to sit close in semitones.
+    return answerOptionsForQuestion(
+      question,
       pool,
       seed: question.optionSeed(index),
     );
@@ -176,6 +208,7 @@ class _ActiveExerciseView extends ConsumerStatefulWidget {
 
 class _ActiveExerciseViewState extends ConsumerState<_ActiveExerciseView> {
   late final PhrasePlayer _player;
+  late final PracticeTimings _timings;
 
   /// Keeps `audioServiceProvider` (auto-dispose) alive for this screen's life.
   ProviderSubscription<AudioService>? _audioSub;
@@ -207,7 +240,8 @@ class _ActiveExerciseViewState extends ConsumerState<_ActiveExerciseView> {
     // open for this screen's lifetime; it is closed in `dispose`.
     final sub = ref.listenManual(audioServiceProvider, (_, _) {});
     _audioSub = sub;
-    _player = PhrasePlayer(sub.read());
+    _timings = ref.read(practiceTimingsProvider);
+    _player = PhrasePlayer(sub.read(), flourishGap: _timings.flourishGap);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _playMotif();
     });
@@ -232,7 +266,7 @@ class _ActiveExerciseViewState extends ConsumerState<_ActiveExerciseView> {
       _audioError = null;
     });
     try {
-      await _player.playMotif(_s.current.audioSampleRefs);
+      await _player.playMotif(_s.current.motif);
       if (!mounted) return;
       setState(() {
         _motifInFlight = false;
@@ -246,7 +280,7 @@ class _ActiveExerciseViewState extends ConsumerState<_ActiveExerciseView> {
       );
     } catch (error) {
       // `playMotif` can also surface a `StateError` (service torn down) or an
-      // `ArgumentError` (empty refs) — never let a raw exception escape.
+      // `ArgumentError` (empty motif) — never let a raw exception escape.
       _showAudioError(SamplePlaybackFailed(_refForError(), '$error'));
     }
   }
@@ -298,7 +332,7 @@ class _ActiveExerciseViewState extends ConsumerState<_ActiveExerciseView> {
       await _player.playFlourish();
       if (!mounted) return;
       _advanceTimer?.cancel();
-      _advanceTimer = Timer(const Duration(milliseconds: 700), _advance);
+      _advanceTimer = Timer(_timings.advanceDelay, _advance);
     }
   }
 
@@ -548,7 +582,9 @@ class _EndOfLoopView extends StatelessWidget {
             Semantics(
               liveRegion: true,
               child: Text(
-                'Você percorreu todos os intervalos de hoje.',
+                // Type-agnostic on purpose: the loop holds intervals, chords
+                // and scales since Story 1.5, so naming one of them would lie.
+                'Você percorreu todos os exercícios de hoje.',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.titleLarge,
               ),

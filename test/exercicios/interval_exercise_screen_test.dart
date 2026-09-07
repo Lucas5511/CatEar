@@ -8,6 +8,7 @@ import 'package:catear/curriculo/data/catalog_asset_bundle.dart';
 import 'package:catear/exercicios/exercicios.dart';
 import 'package:catear/exercicios/presentation/exercise_card.dart';
 import 'package:catear/exercicios/presentation/interval_exercise_screen.dart';
+import 'package:catear/exercicios/presentation/phrase_player.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -41,14 +42,17 @@ ProviderContainer _container({
   FakeAudioService? audio,
   Object? catalogError,
   Set<ExerciseType>? types,
+  PracticeTimings? timings,
 }) {
   return ProviderContainer(
     overrides: [
       audioServiceProvider.overrideWithValue(audio ?? FakeAudioService()),
-      // The product loop is intervals only (Story 1.5 flips it). Overriding
-      // the type set is how a chord / scale exercise reaches this exact widget
-      // tree without any product change.
+      // The product loop holds all three tappable types since Story 1.5.
+      // Narrowing the type set is how a test isolates one of them in this
+      // exact widget tree, without any product change.
       if (types != null) practiceExerciseTypesProvider.overrideWithValue(types),
+      // The screen's non-motif timings, injectable rather than matched by hand.
+      if (timings != null) practiceTimingsProvider.overrideWithValue(timings),
       if (catalogError != null)
         curriculoRepositoryProvider.overrideWithValue(
           _FailingRepo(catalogError),
@@ -72,17 +76,23 @@ Widget _app(
   child: MaterialApp(theme: appTheme(brightness), home: home),
 );
 
-/// Motif gap total: 450 + 450 + 900 ms.
-const Duration _motifDuration = Duration(milliseconds: 1800);
-
 /// Pumps past the catalog load and exactly the first motif playback, so that
 /// afterwards the fake clock and the reaction-time anchor (`_enabledAt`) are
 /// both at the same instant — every ms pumped after this is reaction time.
-Future<void> _settleFirstMotif(WidgetTester tester) async {
+///
+/// The motif length is per type since Story 1.5 — 1800 ms for an interval,
+/// 2380 ms for a chord, 2340 ms for a scale — so it is read off the question
+/// under test instead of being a constant this file keeps in sync by hand. The
+/// previous global `1800 ms` is exactly the hard-coded coupling the deferred
+/// "no injection seam for the timings" item named.
+Future<void> _settleFirstMotif(
+  WidgetTester tester,
+  ProviderContainer container,
+) async {
   await tester.pump(); // catalog future resolves
   await tester.pump(); // _ActiveExerciseView mounts, motif scheduled
   await tester.pump(); // post-frame callback fires the motif
-  await tester.pump(_motifDuration); // motif gaps elapse
+  await tester.pump(_state(container).current.motifTotal); // motif gaps elapse
   await tester.pump();
 }
 
@@ -107,7 +117,7 @@ void main() {
       final container = _container();
       addTearDown(container.dispose);
       await tester.pumpWidget(_app(container));
-      await _settleFirstMotif(tester);
+      await _settleFirstMotif(tester, container);
 
       expect(find.byType(ExerciseCard), findsOneWidget);
       final box = tester.widget<Container>(
@@ -130,7 +140,7 @@ void main() {
     final container = _container();
     addTearDown(container.dispose);
     await tester.pumpWidget(_app(container));
-    await _settleFirstMotif(tester);
+    await _settleFirstMotif(tester, container);
 
     final answer = _state(container).answer;
     final handle = tester.ensureSemantics();
@@ -178,7 +188,7 @@ void main() {
         ),
       ),
     );
-    await _settleFirstMotif(tester);
+    await _settleFirstMotif(tester, container);
 
     // Answer to lay out the result line + "Continuar" too.
     await tester.pump(const Duration(milliseconds: 400));
@@ -197,7 +207,7 @@ void main() {
     final container = _container();
     addTearDown(container.dispose);
     await tester.pumpWidget(_app(container, brightness: Brightness.dark));
-    await _settleFirstMotif(tester);
+    await _settleFirstMotif(tester, container);
 
     await tester.pump(const Duration(milliseconds: 900));
     await tester.tap(find.text(_state(container).answer.nameUi));
@@ -215,7 +225,7 @@ void main() {
     final container = _container(audio: fake);
     addTearDown(container.dispose);
     await tester.pumpWidget(_app(container));
-    await _settleFirstMotif(tester);
+    await _settleFirstMotif(tester, container);
 
     // First exercise is P1 (sax_c4, sax_c4) -> motif of 3 events, never 2.
     expect(fake.playedRefs.length, 3);
@@ -233,7 +243,10 @@ void main() {
     final container = _container();
     addTearDown(container.dispose);
     await tester.pumpWidget(_app(container));
-    await _settleFirstMotif(tester); // _enabledAt == 1800 ms
+    await _settleFirstMotif(
+      tester,
+      container,
+    ); // _enabledAt == the motif length
 
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.text('Ouvir de novo'));
@@ -258,7 +271,7 @@ void main() {
     final container = _container(audio: fake);
     addTearDown(container.dispose);
     await tester.pumpWidget(_app(container));
-    await _settleFirstMotif(tester);
+    await _settleFirstMotif(tester, container);
 
     final answer = _state(container).answer; // P1 -> "uníssono justo"
     final playedBefore = fake.playedRefs.length;
@@ -307,7 +320,7 @@ void main() {
     final container = _container();
     addTearDown(container.dispose);
     await tester.pumpWidget(_app(container));
-    await _settleFirstMotif(tester);
+    await _settleFirstMotif(tester, container);
 
     final answer = _state(container).answer;
     await tester.pump(const Duration(milliseconds: 500));
@@ -327,7 +340,7 @@ void main() {
     final container = _container();
     addTearDown(container.dispose);
     await tester.pumpWidget(_app(container));
-    await _settleFirstMotif(tester);
+    await _settleFirstMotif(tester, container);
 
     final s = _state(container);
     final answer = s.answer;
@@ -377,7 +390,7 @@ void main() {
     final container = _container(audio: fake);
     addTearDown(container.dispose);
     await tester.pumpWidget(_app(container));
-    await _settleFirstMotif(tester);
+    await _settleFirstMotif(tester, container);
 
     final s = _state(container);
     final wrong = s.options.firstWhere((o) => o.id != s.answer.id);
@@ -430,7 +443,7 @@ void main() {
     );
     await tester.tap(find.text('go'));
     await tester.pumpAndSettle();
-    await _settleFirstMotif(tester);
+    await _settleFirstMotif(tester, container);
 
     final notifier = container.read(intervalPracticeProvider.notifier);
     final total = _state(container).loop.length;
@@ -500,7 +513,7 @@ void main() {
     final container = _container(audio: fake);
     addTearDown(container.dispose);
     await tester.pumpWidget(_app(container));
-    await _settleFirstMotif(tester);
+    await _settleFirstMotif(tester, container);
 
     expect(find.textContaining('O som não tocou'), findsOneWidget);
     expect(find.text('Ouvir de novo'), findsOneWidget);
@@ -534,7 +547,7 @@ void main() {
       );
       addTearDown(container.dispose);
       await tester.pumpWidget(_app(container));
-      await _settleFirstMotif(tester);
+      await _settleFirstMotif(tester, container);
 
       expect(
         fake.disposeCount,
@@ -569,7 +582,7 @@ void main() {
     );
     addTearDown(container.dispose);
     await tester.pumpWidget(_app(container));
-    await _settleFirstMotif(tester);
+    await _settleFirstMotif(tester, container);
     expect(fake.disposeCount, 0);
 
     await tester.pumpWidget(_app(container, home: const SizedBox.shrink()));
@@ -594,7 +607,7 @@ void main() {
       );
       addTearDown(container.dispose);
       await tester.pumpWidget(_app(container));
-      await _settleFirstMotif(tester);
+      await _settleFirstMotif(tester, container);
 
       expect(find.textContaining('O som não tocou'), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -611,7 +624,7 @@ void main() {
       await tester.pump();
       await tester.pump();
       fake.unplayableRefs.add(_state(container).current.audioSampleRefs.first);
-      await _settleFirstMotif(tester);
+      await _settleFirstMotif(tester, container);
 
       expect(find.textContaining('O som não tocou'), findsOneWidget);
 
@@ -629,7 +642,7 @@ void main() {
       final container = _container();
       addTearDown(container.dispose);
       await tester.pumpWidget(_app(container));
-      await _settleFirstMotif(tester);
+      await _settleFirstMotif(tester, container);
       final index0 = _state(container).index;
 
       await tester.tap(find.text(_state(container).answer.nameUi).last);
@@ -649,7 +662,7 @@ void main() {
 
       await tester.tap(find.text('Continuar'));
       await tester.pump();
-      await _settleFirstMotif(tester);
+      await _settleFirstMotif(tester, container);
       expect(_state(container).index, index0 + 1);
     },
   );
@@ -661,7 +674,7 @@ void main() {
     final container = _container(audio: fake);
     addTearDown(container.dispose);
     await tester.pumpWidget(_app(container));
-    await _settleFirstMotif(tester);
+    await _settleFirstMotif(tester, container);
 
     await tester.tap(find.text('Ouvir de novo'));
     await tester.pump();
@@ -691,7 +704,7 @@ void main() {
     final container = _container();
     addTearDown(container.dispose);
     await tester.pumpWidget(_app(container));
-    await _settleFirstMotif(tester);
+    await _settleFirstMotif(tester, container);
 
     expect(_activeView(), findsOneWidget);
     expect(find.text('Que intervalo é este?'), findsOneWidget);
@@ -708,7 +721,7 @@ void main() {
     );
     addTearDown(container.dispose);
     await tester.pumpWidget(_app(container));
-    await _settleFirstMotif(tester);
+    await _settleFirstMotif(tester, container);
 
     // Same card, same private view, same replay affordance — nothing per type.
     expect(_activeView(), findsOneWidget);
@@ -749,7 +762,7 @@ void main() {
     final container = _container(types: const {ExerciseType.scale});
     addTearDown(container.dispose);
     await tester.pumpWidget(_app(container));
-    await _settleFirstMotif(tester);
+    await _settleFirstMotif(tester, container);
 
     expect(_activeView(), findsOneWidget);
     expect(find.byType(ExerciseCard), findsOneWidget);
@@ -790,7 +803,7 @@ void main() {
     final container = _container(types: const {ExerciseType.chord});
     addTearDown(container.dispose);
     await tester.pumpWidget(_app(container));
-    await _settleFirstMotif(tester);
+    await _settleFirstMotif(tester, container);
 
     await tester.pump(const Duration(milliseconds: 900));
     await tester.tap(find.text(_state(container).answer.nameUi));
@@ -802,6 +815,142 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     expect(_state(container).index, 1);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the product loop is the full 39, and no card ever mixes types', (
+    tester,
+  ) async {
+    // Story 1.5's visible change: the default loop is no longer intervals only.
+    final container = _container();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester, container);
+
+    final s = _state(container);
+    expect(s.loop.length, 39);
+    expect(s.loop.map((q) => q.type).toSet(), {
+      ExerciseType.interval,
+      ExerciseType.chord,
+      ExerciseType.scale,
+    });
+
+    // Walk the whole loop through the notifier and check the options the
+    // screen would render at every position. A merged pool would put a triad
+    // (`[4, 7]`, distance 3 from a major third) on an interval card.
+    final notifier = container.read(intervalPracticeProvider.notifier);
+    for (var i = 0; i < s.loop.length; i++) {
+      final now = _state(container);
+      expect(now.index, i);
+      for (final option in now.options) {
+        expect(
+          now.pool[now.current.type],
+          contains(option),
+          reason:
+              'position $i (${now.current.type.name}) offered '
+              '"${option.nameUi}" from another catalog',
+        );
+      }
+      notifier.answer(now.answer, 100);
+      notifier.advance();
+    }
+    await tester.pump();
+    expect(
+      find.text('Você percorreu todos os exercícios de hoje.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a chord plays block -> arpeggio -> block, 5 events', (
+    tester,
+  ) async {
+    final fake = FakeAudioService();
+    final container = _container(
+      audio: fake,
+      types: const {ExerciseType.chord},
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester, container);
+
+    final refs = _state(container).current.audioSampleRefs;
+    expect(refs.length, 4, reason: '[block, root, third, fifth]');
+    expect(fake.playedRefs, [refs[0], refs[1], refs[2], refs[3], refs[0]]);
+  });
+
+  testWidgets('a scale plays all 8 notes, in the order of its refs', (
+    tester,
+  ) async {
+    final fake = FakeAudioService();
+    final container = _container(
+      audio: fake,
+      types: const {ExerciseType.scale},
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester, container);
+
+    final refs = _state(container).current.audioSampleRefs;
+    expect(refs.length, 8);
+    // Story 1.4's fixed 3-event contour played `r0, r1, r0` here — two notes
+    // out of eight, which is not a scale.
+    expect(fake.playedRefs, refs);
+  });
+
+  testWidgets('the celebration delay comes from the injected timings', (
+    tester,
+  ) async {
+    // The seam the 1.4 review asked for: a test states the timing it depends
+    // on instead of matching a constant inside the widget by hand.
+    final container = _container(
+      timings: const PracticeTimings(
+        advanceDelay: Duration(milliseconds: 2500),
+      ),
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester, container);
+
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.tap(find.text(_state(container).answer.nameUi));
+    await tester.pump();
+    // Past the default 700 ms (plus the ~510 ms flourish), still on the same
+    // card because the override pushed the auto-advance out to 2500 ms.
+    await tester.pump(const Duration(milliseconds: 1500));
+    expect(_state(container).index, 0);
+    await tester.pump(const Duration(milliseconds: 3000));
+    expect(_state(container).index, 1);
+  });
+
+  testWidgets('the flourish gap comes from the injected timings', (
+    tester,
+  ) async {
+    // The other half of the seam: `flourishGap` reaches the PhrasePlayer the
+    // screen builds. Stretched to 800 ms so the three flourish notes land in
+    // separate pumps — at the 170 ms default they would all fire in one.
+    final fake = FakeAudioService();
+    final container = _container(
+      audio: fake,
+      timings: const PracticeTimings(flourishGap: Duration(milliseconds: 800)),
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester, container);
+
+    final beforeFlourish = fake.playedRefs.length;
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.tap(find.text(_state(container).answer.nameUi));
+    await tester.pump();
+
+    expect(fake.playedRefs.length, beforeFlourish + 1);
+    await tester.pump(const Duration(milliseconds: 800));
+    expect(fake.playedRefs.length, beforeFlourish + 2);
+    await tester.pump(const Duration(milliseconds: 800));
+    expect(fake.playedRefs.length, beforeFlourish + 3);
+    expect(
+      fake.playedRefs.sublist(beforeFlourish),
+      PhrasePlayer.flourishRefs,
+      reason: 'the injected gap must not change what the flourish plays',
+    );
   });
 
   testWidgets('an empty loop lands on the end-of-loop view, not a crash', (
@@ -818,8 +967,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('Você percorreu todos os intervalos de hoje.'),
+      find.text('Você percorreu todos os exercícios de hoje.'),
       findsOneWidget,
+    );
+    expect(
+      find.textContaining('intervalos'),
+      findsNothing,
+      reason: 'the loop holds chords and scales too — naming one would lie',
     );
     expect(find.text('Voltar'), findsOneWidget);
     expect(tester.takeException(), isNull);

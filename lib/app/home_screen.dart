@@ -1,7 +1,8 @@
 import 'package:catear/exercicios/exercicios.dart';
 import 'package:flutter/material.dart';
 
-/// Home tab. Carries the "Praticar" CTA into the interval exercise (Story 1.4).
+/// Home tab. Carries the "Praticar" CTA into the recognition practice loop —
+/// intervals, chords and scales, 39 exercises in v1 (Stories 1.4 / 1.5).
 /// Story 1.7 swaps the destination for the sized session.
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});

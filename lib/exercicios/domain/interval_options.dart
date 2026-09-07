@@ -3,7 +3,38 @@ library;
 
 import 'dart:math';
 
+import 'package:catear/curriculo/curriculo.dart';
+
 import 'exercise_question.dart';
+
+/// The 4 options for [question], drawn **only** from its own type's pool.
+///
+/// This is the entry point the practice loop uses, and it exists so that
+/// passing the wrong pool is not something a caller can do by accident:
+/// `poolsByType` is the whole map and the type is read off the question. A
+/// distractor from another type would be nonsense to the learner — see
+/// `practicePool` for why a merged pool ranks a triad above most intervals.
+///
+/// Throws [ArgumentError] when [poolsByType] has no entry for the question's
+/// type. That cannot happen while both sides come from the same
+/// `practicePool` call, and falling back to an empty pool would silently ship a
+/// card with one button on it — a broken exercise that answers itself.
+List<AnswerOption> answerOptionsForQuestion(
+  ExerciseQuestion question,
+  Map<ExerciseType, List<AnswerOption>> poolsByType, {
+  required int seed,
+}) {
+  final pool = poolsByType[question.type];
+  if (pool == null) {
+    throw ArgumentError.value(
+      poolsByType.keys.toList(),
+      'poolsByType',
+      'no distractor pool for ${question.type} — the pool and the loop must '
+          'come from the same practicePool/practiceLoop pair',
+    );
+  }
+  return answerOptionsFor(question.answer, pool, seed: seed);
+}
 
 /// Returns exactly 4 [AnswerOption]s — the [answer] plus 3 distractors —
 /// unless [pool] cannot supply that many, in which case it returns as many
@@ -19,6 +50,9 @@ import 'exercise_question.dart';
 ///
 /// The final order is a deterministic Fisher-Yates shuffle keyed on [seed], so
 /// options are stable across widget rebuilds and reproducible in tests.
+///
+/// [pool] must hold options of the answer's own type only; prefer
+/// [answerOptionsForQuestion], which enforces that.
 List<AnswerOption> answerOptionsFor(
   AnswerOption answer,
   Iterable<AnswerOption> pool, {

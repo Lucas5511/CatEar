@@ -19,6 +19,8 @@ import 'dart:math' as math;
 import 'package:catear/curriculo/curriculo.dart';
 import 'package:flutter/foundation.dart';
 
+import 'motif.dart';
+
 /// One selectable answer, projected off a catalog spec.
 ///
 /// Everything the UI needs is [id] (identity) and [nameUi] (the label). The
@@ -112,8 +114,10 @@ class ExerciseQuestion {
     required this.prompt,
     required this.answer,
     required List<String> audioSampleRefs,
+    required List<MotifEvent> motif,
     this.variantKey,
-  }) : audioSampleRefs = List.unmodifiable(audioSampleRefs);
+  }) : audioSampleRefs = List.unmodifiable(audioSampleRefs),
+       motif = List.unmodifiable(motif);
 
   /// Kept for the recorded [ExerciseType] of an attempt and for resolving the
   /// error taxonomy. The widgets never branch on it.
@@ -125,8 +129,20 @@ class ExerciseQuestion {
   /// The correct option. Also the option the result line names.
   final AnswerOption answer;
 
-  /// Opaque sample tokens handed to `PhrasePlayer`, already ordered.
+  /// Opaque sample tokens, already ordered. Kept for diagnostics and for the
+  /// error banner; what actually gets played is [motif].
   final List<String> audioSampleRefs;
+
+  /// The musical shape this question is heard as — the sequence of sample fires
+  /// and their rhythm, decided per type by [questionFor] (Story 1.5).
+  ///
+  /// `PhrasePlayer` plays whatever it is handed. Making the contour data rather
+  /// than a `switch` inside the player is what keeps the presentation layer free
+  /// of per-type code, which Rule 6 cannot enforce on its own.
+  final List<MotifEvent> motif;
+
+  /// Wall time of one [motif] playback.
+  Duration get motifTotal => motifDuration(motif);
 
   /// What separates two exercises that share an [answer] — the melodic
   /// direction in v1, `null` for a type that has none. Folded into
@@ -147,6 +163,7 @@ class ExerciseQuestion {
       other.prompt == prompt &&
       other.answer == answer &&
       listEquals(other.audioSampleRefs, audioSampleRefs) &&
+      listEquals(other.motif, motif) &&
       other.variantKey == variantKey;
 
   @override
@@ -155,6 +172,7 @@ class ExerciseQuestion {
     prompt,
     answer,
     Object.hashAll(audioSampleRefs),
+    Object.hashAll(motif),
     variantKey,
   );
 
@@ -188,6 +206,8 @@ ExerciseQuestion questionFor(Exercise exercise) => switch (exercise) {
       semitoneProfile: [exercise.interval.semitones],
     ),
     audioSampleRefs: exercise.audioSampleRefs,
+    // `r0, r1, r0` — unchanged since Story 1.4.
+    motif: intervalMotif(exercise.audioSampleRefs),
     variantKey: exercise.direction,
   ),
   ChordExercise() => ExerciseQuestion(
@@ -200,6 +220,9 @@ ExerciseQuestion questionFor(Exercise exercise) => switch (exercise) {
       semitoneProfile: exercise.chord.intervals,
     ),
     audioSampleRefs: exercise.audioSampleRefs,
+    // Block -> arpeggio -> block, off the positional ref contract Story 1.4b
+    // wrote: `[block, root, third, fifth]`.
+    motif: chordMotif(exercise.audioSampleRefs),
   ),
   ScaleExercise() => ExerciseQuestion(
     type: ExerciseType.scale,
@@ -210,6 +233,9 @@ ExerciseQuestion questionFor(Exercise exercise) => switch (exercise) {
       semitoneProfile: degreesFromSteps(exercise.scale.steps),
     ),
     audioSampleRefs: exercise.audioSampleRefs,
+    // All 8 notes in the order the catalog stores them (`direction` is already
+    // applied to the refs), at scale pace.
+    motif: scaleMotif(exercise.audioSampleRefs),
     variantKey: exercise.direction,
   ),
   ResolutionExercise() => ExerciseQuestion(
@@ -223,6 +249,12 @@ ExerciseQuestion questionFor(Exercise exercise) => switch (exercise) {
       semitoneProfile: const [],
     ),
     audioSampleRefs: exercise.audioSampleRefs,
+    // No contour. A cadence is sung (Epic 3) and `requiresVoice` keeps it out
+    // of the tap loop, so nothing plays it today — and pacing two chords is a
+    // musical decision this story has no basis to make. Story 3.5, which turns
+    // resolution on, gives it one; until then an empty motif surfaces the
+    // audio banner rather than inventing a rhythm nobody chose.
+    motif: const [],
   ),
 };
 

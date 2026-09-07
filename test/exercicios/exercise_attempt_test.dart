@@ -353,7 +353,7 @@ void main() {
       final curriculum = await container
           .read(curriculoRepositoryProvider)
           .load();
-      return practicePool(curriculum, types: {type});
+      return practicePool(curriculum, types: {type})[type] ?? const [];
     }
 
     test(

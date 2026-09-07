@@ -3,11 +3,11 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:catear/audio/audio.dart';
-import 'package:catear/audio/testing.dart';
 import 'package:catear/curriculo/curriculo.dart';
 // `phrase_player.dart` is deliberately imported straight from `presentation/`:
-// `noteGap` / `flourishGap` are instance fields with defaults, not statics, and
-// the module barrel documents this pattern for tests that need them.
+// `defaultFlourishGap` lives next to the player that consumes it and is not
+// re-exported by the module barrel, which documents this pattern for tests.
+import 'package:catear/exercicios/exercicios.dart';
 import 'package:catear/exercicios/presentation/phrase_player.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,7 +29,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// every attack and a loudness 3 dB off the declared target passed every check.
 /// So the suite now also reads the PCM payload it was already loading —
 /// **onset**, **peak** and **RMS** — plus a relational guard tying the worst
-/// onset to `PhrasePlayer`'s shortest gap, and the chord-exercise shape
+/// onset to the shortest playback gap in the app, and the chord-exercise shape
 /// (`[triad, root, third, fifth]`) that no gate covered before.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -308,18 +308,29 @@ void main() {
     });
 
     test(
-      'the worst onset stays under half of PhrasePlayer\'s shortest gap',
+      'the worst onset stays under half of the shortest gap in the app',
       () async {
         // The relational half of the A-2 guard: the flourish only works
         // because every gap outlasts the dead air ahead of the attack. Nothing
         // enforced that coupling before — the fake models "playSample was
         // called", not "a sound came out".
-        final player = PhrasePlayer(FakeAudioService());
+        // Every gap a sample has to speak within. Since Story 1.5 the motif
+        // rhythm is per type and lives on the events, not on the player, and
+        // the chord arpeggio / scale walk are the shortest motif gaps — so
+        // they belong in this anchor, not just the interval's. The flourish gap
+        // is read from its single definition, the one the screen injects, so
+        // lowering it cannot leave this guard measuring a stale number.
         final shortestGapMs =
-            math.min(
-              player.noteGap.inMicroseconds,
-              player.flourishGap.inMicroseconds,
-            ) /
+            <Duration>[
+              defaultFlourishGap,
+              intervalNoteGap,
+              intervalReturnHold,
+              chordBlockHold,
+              chordArpeggioGap,
+              chordFinalBlockHold,
+              scaleNoteGap,
+              scaleFinalHold,
+            ].map((d) => d.inMicroseconds).reduce(math.min) /
             1000.0;
         final samples = await allSamples;
         // A missing onset (a silent sample) is the worst case, not the best:
@@ -341,7 +352,7 @@ void main() {
           lessThanOrEqualTo(shortestGapMs / 2),
           reason:
               '${worst.key}: onset ${worst.onsetMs!.toStringAsFixed(1)} ms is '
-              'more than half the shortest PhrasePlayer gap '
+              'more than half the shortest gap in the app '
               '(${shortestGapMs.toStringAsFixed(0)} ms) — notes would be cut '
               'before their own attack',
         );
