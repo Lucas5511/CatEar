@@ -50,7 +50,7 @@ spacing:
   '5': 24px
   '6': 32px
 components:
-  mascot-bubble: 'Balão de fala do mascote gatinho, canto arredondado lg, sempre em surface-raised com borda accent-soft.'
+  mascot-bubble: 'Balão de fala do mascote gatinho, canto arredondado lg, fundo accent-soft, flutuando sobre o conteúdo com sombra quente. (Esta linha dizia "surface-raised com borda accent-soft" e contradizia as seções Components e Shapes abaixo, que pedem accent-soft como fundo; reconciliada pela leitura de preenchimento na Story 1.6, que é a que foi implementada.)'
   progress-meter: 'Par de barras (Habilidade + Esforço), ver Components abaixo.'
 ---
 

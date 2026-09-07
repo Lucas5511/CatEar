@@ -13,6 +13,7 @@ const _tokens = <String, int>{
   'surface-raised': 0xFFFFFF,
   'ink-primary': 0x3A2E22,
   'ink-secondary': 0x7E6F62,
+  'accent-soft': 0xFBD9B8,
   'effort-track': 0xC67F17,
   'skill-track': 0x5C9C78,
   'scaffold-consonant': 0x5C9C78,
@@ -22,6 +23,7 @@ const _tokens = <String, int>{
   'surface-raised-dark': 0x352C23,
   'ink-primary-dark': 0xF5EBDD,
   'ink-secondary-dark': 0xC4B3A0,
+  'accent-soft-dark': 0x5A4633,
   'effort-track-dark': 0xF2B85C,
   'skill-track-dark': 0x9BCBAE,
   'scaffold-consonant-dark': 0x9BCBAE,
@@ -94,6 +96,9 @@ void main(List<String> args) {
       row(fg, bg, 4.5);
     }
   }
+  // Story 1.6's mascot bubble: `accent-soft` carries ink-primary only (the
+  // single Fredoka style), so that is the only pair audited on it.
+  row('ink-primary', 'accent-soft', 4.5);
   for (final fg in graphicFg) {
     row(fg, 'surface-base', 3.0);
   }
@@ -102,6 +107,7 @@ void main(List<String> args) {
       row(fg, bg, 4.5);
     }
   }
+  row('ink-primary-dark', 'accent-soft-dark', 4.5);
   for (final fg in [
     'effort-track-dark',
     'skill-track-dark',

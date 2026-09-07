@@ -2,12 +2,14 @@
 ///
 /// Re-exports the pure `domain/` (the type-agnostic question/answer model, the
 /// fixed loop, option generation, the practice state, the `ExerciseAttempt`
-/// value) plus the single route screen from `presentation/`
+/// value, the mascot's error explanation) plus the single route screen from
+/// `presentation/`
 /// (Rule 1 of the module-boundary gate allows a barrel to re-export
 /// `presentation/`). No other module imports `exercicios/presentation|data/`
 /// directly. `data/` stays empty in Story 1.4.
 library;
 
+export 'domain/error_explanation.dart';
 export 'domain/exercise_attempt.dart';
 export 'domain/exercise_question.dart';
 export 'domain/interval_options.dart';

@@ -182,6 +182,14 @@ eventos permanecem provados só contra o `FakeAudioService`.
   (`flourishGap`), então o limite numérico não mudou; o acoplamento é que ficou
   correto, já que os gaps novos (260/270 ms) são menores que os antigos.
 
+
+**Verificação humana concluída — 2026-09-07.** O humano instalou o release da 1.5 no emulador
+e percorreu o loop: acorde e escala aparecem, os contornos soam como pretendido e o
+comportamento foi aprovado ("está funcionando bem"). É a escuta que estava pendente desde a
+1.4b, agora feita sobre o material que a justifica — os três contornos tocando de verdade.
+Ressalva registrada: o emulador distorce timbre e ruído (falso positivo do charter C1), então
+esta verificação cobre **ritmo e forma**, não qualidade de amostra.
+
 ## Spec Change Log
 
 ## Review Triage Log
