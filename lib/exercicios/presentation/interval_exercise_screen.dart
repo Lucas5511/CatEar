@@ -242,17 +242,74 @@ class IntervalPractice extends _$IntervalPractice {
     // `null` is an abandoned session — here, only the zero-answer walk to the
     // end of an empty sequence. Nothing to report is a normal outcome.
     if (event == null) return;
+    // Marked before the call, not after: Epic 2's ingestion is idempotent by
+    // `sessionId`, so a retry that duplicated the event would be worse than a
+    // delivery that failed once. Today's reporter only logs and cannot throw;
+    // the guard is for the DB-backed one that replaces it.
     _reported = true;
-    ref.read(sessionResultReporterProvider).report(event);
+    try {
+      ref.read(sessionResultReporterProvider).report(event);
+    } catch (error, stack) {
+      // This runs from an auto-advance `Timer` — an escaping exception would
+      // surface as an unhandled async error and take down the session the
+      // learner just finished, over a report they cannot see.
+      developer.log(
+        'session report failed for ${event.sessionId}',
+        name: 'catear.exercicios.session',
+        error: error,
+        stackTrace: stack,
+      );
+    }
   }
 }
 
 /// The route screen.
-class IntervalExerciseScreen extends ConsumerWidget {
+///
+/// Stateful for one reason: it owns the subscription that keeps the
+/// auto-dispose `audioServiceProvider` alive for the whole route.
+///
+/// That used to live on the exercise card, which was almost right — a card is
+/// mounted for nearly the whole session — but "almost" is where the invariant
+/// broke. Story 1.7 added two states with no card under them (the end offer and
+/// the end of the session), and unmounting the card unmounted the only
+/// listener: the real `_JustAudioService` was torn down while the offer sat on
+/// screen, and declining built a second `AudioPlayer` and reconfigured the
+/// `AudioSession` mid-session. Nothing was playing at that instant, so it
+/// worked — but this is the same lifecycle that once made every `playSample`
+/// throw `StateError` (the 1.4 regression), and the offer is 12 minutes deep,
+/// where no test was ever going to see it.
+///
+/// The service now lives and dies with the route, which is what the comment on
+/// the card always claimed.
+class IntervalExerciseScreen extends ConsumerStatefulWidget {
   const IntervalExerciseScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<IntervalExerciseScreen> createState() =>
+      _IntervalExerciseScreenState();
+}
+
+class _IntervalExerciseScreenState
+    extends ConsumerState<IntervalExerciseScreen> {
+  /// Holds `audioServiceProvider` (auto-dispose) open for the route's life.
+  /// Closed in [dispose] — held open is only correct if letting go is too, or
+  /// a real `AudioPlayer` outlives the screen nobody is looking at.
+  ProviderSubscription<AudioService>? _audioSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _audioSub = ref.listenManual(audioServiceProvider, (_, _) {});
+  }
+
+  @override
+  void dispose() {
+    _audioSub?.close();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final async = ref.watch(intervalPracticeProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Praticar')),
@@ -309,9 +366,6 @@ class _ActiveExerciseViewState extends ConsumerState<_ActiveExerciseView> {
   late final PhrasePlayer _player;
   late final PracticeTimings _timings;
 
-  /// Keeps `audioServiceProvider` (auto-dispose) alive for this screen's life.
-  ProviderSubscription<AudioService>? _audioSub;
-
   bool _optionsEnabled = false;
   DateTime? _enabledAt;
   SamplePlaybackFailed? _audioError;
@@ -339,15 +393,16 @@ class _ActiveExerciseViewState extends ConsumerState<_ActiveExerciseView> {
   @override
   void initState() {
     super.initState();
-    // `audioServiceProvider` is auto-dispose. A bare `ref.read` leaves it with
-    // zero listeners, so Riverpod tears down the real `_JustAudioService`
-    // (firing its `onDispose`) before the first motif plays — every
-    // `playSample` would then throw `StateError`. A manual listen holds it
-    // open for this screen's lifetime; it is closed in `dispose`.
-    final sub = ref.listenManual(audioServiceProvider, (_, _) {});
-    _audioSub = sub;
+    // A bare `ref.read` of the auto-dispose `audioServiceProvider` is safe
+    // *here* only because the route above holds a listener on it for its whole
+    // life (see [IntervalExerciseScreen]). Without that, Riverpod would tear
+    // down the real `_JustAudioService` between cards and every `playSample`
+    // would throw `StateError`.
     _timings = ref.read(practiceTimingsProvider);
-    _player = PhrasePlayer(sub.read(), flourishGap: _timings.flourishGap);
+    _player = PhrasePlayer(
+      ref.read(audioServiceProvider),
+      flourishGap: _timings.flourishGap,
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _playMotif();
     });
@@ -357,7 +412,6 @@ class _ActiveExerciseViewState extends ConsumerState<_ActiveExerciseView> {
   void dispose() {
     _advanceTimer?.cancel();
     _player.stop().ignore();
-    _audioSub?.close();
     super.dispose();
   }
 
@@ -789,8 +843,14 @@ class _EndOfferView extends StatelessWidget {
     required this.onFinish,
   });
 
-  /// How many exercises have been answered so far — the progress the offer
-  /// reports back. Always >= 1: the offer is only reachable after an answer.
+  /// How many exercises have been answered **in this session** — the progress
+  /// the offer reports back. Always >= 1: the offer is only reachable after an
+  /// answer.
+  ///
+  /// The copy says "nesta sessão", not "hoje": this counts `state.attempts`,
+  /// which is per session and dropped on abandonment. A second session in the
+  /// same day would understate a daily total, and a total across sessions is
+  /// something only the Progressão can know (Epic 2).
   final int answered;
 
   final VoidCallback onContinue;
@@ -809,7 +869,7 @@ class _EndOfferView extends StatelessWidget {
             Semantics(
               liveRegion: true,
               child: Text(
-                'Você já praticou $count hoje.',
+                'Você já praticou $count nesta sessão.',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.titleLarge,
               ),
@@ -865,7 +925,7 @@ class _EndOfSessionView extends StatelessWidget {
     final headline = state.ending == SessionEnd.acceptedOffer
         // Ending early is a complete session, so it is closed like one — no
         // "você parou antes", nothing that reads as a smaller result.
-        ? 'Sessão encerrada. Você praticou $count hoje.'
+        ? 'Sessão encerrada. Você praticou $count nesta sessão.'
         // Type-agnostic on purpose: the loop holds intervals, chords
         // and scales since Story 1.5, so naming one of them would lie.
         : 'Você percorreu todos os exercícios de hoje.';

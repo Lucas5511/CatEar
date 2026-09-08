@@ -147,6 +147,35 @@ exatamente o que esta story não faz.
 
 ## Review Triage Log
 
+**`/code-review high`, 2026-09-08** — quatro achados, três corrigidos em
+`fix/story-1-7-review-followup`, um aceito como está.
+
+1. **Corrigido — `audioServiceProvider` descartado durante a oferta.** A
+   assinatura que segura o provider auto-dispose morava no card do exercício, e
+   a oferta desmonta o card: o `_JustAudioService` real morria com a oferta na
+   tela e um segundo `AudioPlayer` nascia ao recusar. Nada estava tocando
+   naquele instante, que é exatamente por que nenhum teste pegou. A assinatura
+   subiu para `IntervalExerciseScreen`, que agora é `ConsumerStatefulWidget` —
+   a invariante que o comentário do card já afirmava passou a ser verdade. O
+   teste novo foi rodado contra o código antigo e falha nele (`disposeCount` 1
+   em vez de 0).
+2. **Corrigido — contagem por sessão redigida como total do dia.** "Você já
+   praticou N exercícios **hoje**" mostra `state.attempts.length`, que é por
+   sessão e é descartado no abandono. Numa segunda sessão no mesmo dia,
+   subestima. Virou "nesta sessão"; um total do dia é coisa que só a Progressão
+   pode saber (Epic 2).
+3. **Corrigido — `report()` sem tratamento de erro.** Hoje o reporter só loga e
+   não tem como lançar, mas ele roda a partir do `Timer` de auto-advance: com a
+   ingestão em banco do Epic 2, uma exceção escaparia como erro assíncrono não
+   tratado e derrubaria a sessão que a pessoa acabou de terminar. O `_reported`
+   continua sendo marcado **antes** da chamada — a ingestão do Epic 2 é
+   idempotente por `sessionId`, então duplicar é pior que falhar uma vez.
+4. **Aceito como está — relógio de parede na oferta dos 12 min.** Registrado em
+   `deferred-work.md` com o motivo: trocar por `Stopwatch` mata o seam de
+   `clock` que faz os testes rodarem em milissegundos, e o dano de um salto de
+   NTP é uma oferta fora de hora, recusável com um toque. Nenhuma tentativa se
+   perde. Revisitar se o relógio da sessão passar a alimentar pontuação.
+
 ## Design Notes
 
 - **Por que os 39 e não um subconjunto.** Sortear uma sequência menor exigiria decidir *como* escolher, e seleção adaptativa é explicitamente Story 2.8. Um sorteio ingênuo agora viraria dívida a desfazer.

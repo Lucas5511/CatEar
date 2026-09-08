@@ -458,3 +458,29 @@ recebem o número correspondente.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-6-feedback-explicativo-em-erro.md`
   summary: `ErrorType.octaveError` existe na taxonomia mas nada o produz — nenhuma resposta errada pode resolver para ele hoje, então o app não sabe dizer "você acertou a nota, errou a oitava".
   evidence: `ExerciseAttempt.errorTypeFor` resolve um pick de intervalo por id dentro de `intervalErrorTypes`, cujo membro de oitava é `ErrorType.p8` (o intervalo de oitava justa); nenhum id de catálogo é `octave-error`, e acorde/escala/resolução também não o alcançam. Detecção real de salto de oitava (mesma classe de altura, registro diferente) exige mudar `errorTypeFor` — o Never explícito da Story 1.6 ("Mudar `ErrorType`, a taxonomia, ou como `ExerciseAttempt.errorTypeFor` resolve"), então a 1.6 removeu o ramo morto de `error_explanation.dart` em vez de mantê-lo inalcançável. A linha da matriz de I/O da spec que descrevia esse caminho estava errada. Uma story posterior que mexa em `errorTypeFor` é a dona: produzir o `errorType` e devolver a frase própria.
+
+## Deferred from: /code-review high da Story 1.7 (2026-09-08)
+
+Três dos quatro achados foram corrigidos no follow-up
+`fix/story-1-7-review-followup`: o `audioServiceProvider` descartado durante a
+oferta (a assinatura subiu do card para a rota, que é o que o comentário já
+afirmava), a contagem por sessão redigida como total do dia ("hoje" →
+"nesta sessão"), e o `report()` sem tratamento de erro. O quarto fica.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-7-estrutura-de-sessao.md`
+  summary: O alvo de 12 min da oferta é medido no relógio de parede
+  (`clock.now()` em `PracticeSession.elapsedAt`), não num relógio monotônico.
+  Um ajuste de NTP, uma virada de horário de verão ou uma mudança manual de
+  relógio no meio da sessão dispara a oferta cedo demais ou a suprime pelo
+  resto da sessão.
+  evidence: `lib/exercicios/domain/session_result.dart` (`elapsedAt`),
+  `lib/exercicios/presentation/interval_exercise_screen.dart`
+  (`_shouldOfferEnd`).
+  ✅ **ACEITO como está (2026-09-08), não é dívida a pagar.** Trocar por
+  `Stopwatch` mata o seam de `clock` — é ele que faz os testes da oferta
+  rodarem em milissegundos em vez de esperar 12 minutos reais, e esse seam é
+  metade do valor que a Story 1.6 entregou. O dano de um salto de relógio é uma
+  oferta fora de hora, recusável com um toque; nenhuma tentativa se perde e
+  nenhum evento é emitido a mais. O custo da correção é maior que o do defeito.
+  Se um dia o relógio da sessão passar a alimentar algo que conte pontos, esta
+  decisão precisa ser revista — aí o salto vira dado errado, não UX estranha.
