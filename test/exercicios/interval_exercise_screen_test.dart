@@ -48,6 +48,18 @@ class _RecordingReporter implements SessionResultReporter {
   void report(SessionResultReported event) => events.add(event);
 }
 
+/// Stands in for the DB-backed reporter Epic 2 will install, on the day the
+/// write fails.
+class _ThrowingReporter implements SessionResultReporter {
+  int calls = 0;
+
+  @override
+  void report(SessionResultReported event) {
+    calls++;
+    throw StateError('ingestion is down');
+  }
+}
+
 ProviderContainer _container({
   FakeAudioService? audio,
   Object? catalogError,
@@ -1462,7 +1474,10 @@ void main() {
     expect(_activeView(), findsNothing);
     expect(_continuePracticing(), findsOneWidget);
     expect(_finishForToday(), findsOneWidget);
-    expect(find.text('Você já praticou 2 exercícios hoje.'), findsOneWidget);
+    expect(
+      find.text('Você já praticou 2 exercícios nesta sessão.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('the offer counts the work and blames nobody (UX-DR12)', (
@@ -1479,7 +1494,10 @@ void main() {
     _answerAndAdvance(container);
     await tester.pump();
 
-    expect(find.text('Você já praticou 1 exercício hoje.'), findsOneWidget);
+    expect(
+      find.text('Você já praticou 1 exercício nesta sessão.'),
+      findsOneWidget,
+    );
     // Stopping and continuing are the same widget with the same width: the
     // layout is half of "escolhas iguais".
     final buttons = tester
@@ -1591,7 +1609,7 @@ void main() {
       );
       expect(_state(container).ending, SessionEnd.acceptedOffer);
       expect(
-        find.text('Sessão encerrada. Você praticou 3 exercícios hoje.'),
+        find.text('Sessão encerrada. Você praticou 3 exercícios nesta sessão.'),
         findsOneWidget,
       );
       expect(
@@ -1607,6 +1625,112 @@ void main() {
       expect(reporter.events, hasLength(1));
     },
   );
+  testWidgets('the audio service survives the end offer', (tester) async {
+    // Review finding on the 1.7 branch: the offer unmounts the exercise card,
+    // and the card used to be the only listener on the auto-dispose
+    // `audioServiceProvider` — so the real service was torn down mid-session
+    // and rebuilt on decline. Nothing was playing at that instant, which is
+    // exactly why no existing test caught it.
+    final fake = FakeAudioService();
+    final container = ProviderContainer(
+      overrides: [
+        // `overrideWith`, not `overrideWithValue`: the provider has to stay
+        // auto-dispose for the teardown to be reachable at all.
+        audioServiceProvider.overrideWith((ref) {
+          ref.onDispose(fake.dispose);
+          return fake;
+        }),
+        catalogAssetBundleProvider.overrideWithValue(_RealCatalogBundle()),
+        practiceTimingsProvider.overrideWithValue(
+          const PracticeTimings(endOfferAfter: Duration(seconds: 30)),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester, container);
+    await tester.pump(const Duration(seconds: 31));
+
+    _answerAndAdvance(container);
+    await tester.pump();
+    expect(_state(container).phase, AnswerPhase.offeringEnd);
+    expect(
+      fake.disposeCount,
+      0,
+      reason: 'the route holds the service open, card or no card',
+    );
+
+    await tester.tap(_continuePracticing());
+    await tester.pump();
+    await _settleFirstMotif(tester, container);
+
+    expect(fake.disposeCount, 0);
+    expect(
+      container.read(audioServiceProvider),
+      same(fake),
+      reason: 'declining must not build a second AudioPlayer',
+    );
+    expect(find.textContaining('O som não tocou'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the audio service survives the end of the session too', (
+    tester,
+  ) async {
+    final fake = FakeAudioService();
+    final container = ProviderContainer(
+      overrides: [
+        audioServiceProvider.overrideWith((ref) {
+          ref.onDispose(fake.dispose);
+          return fake;
+        }),
+        catalogAssetBundleProvider.overrideWithValue(_RealCatalogBundle()),
+      ],
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester, container);
+
+    _answerMany(container, _state(container).loop.length);
+    await tester.pump();
+
+    expect(find.text('Voltar'), findsOneWidget);
+    expect(
+      fake.disposeCount,
+      0,
+      reason: 'released with the route, not with the last card',
+    );
+  });
+
+  testWidgets('a reporter that throws does not take the session down', (
+    tester,
+  ) async {
+    // Today's reporter only logs. Epic 2 swaps in a database write, and this
+    // runs from the auto-advance timer — an escaping exception would surface
+    // as an unhandled async error over a report the learner cannot see.
+    final reporter = _ThrowingReporter();
+    final container = _container(reporter: reporter);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester, container);
+
+    _answerMany(container, _state(container).loop.length);
+    await tester.pump();
+
+    expect(reporter.calls, 1);
+    expect(tester.takeException(), isNull);
+    expect(
+      find.text('Você percorreu todos os exercícios de hoje.'),
+      findsOneWidget,
+      reason: 'the learner still gets their ending',
+    );
+
+    // And it is not retried behind their back: duplicate ingestion is worse
+    // than one failed delivery, since Epic 2 dedupes by sessionId.
+    await tester.pumpWidget(_app(container, brightness: Brightness.dark));
+    await tester.pumpAndSettle();
+    expect(reporter.calls, 1);
+  });
 }
 
 /// A home that pushes the practice screen, so a test can pop back out of it the
