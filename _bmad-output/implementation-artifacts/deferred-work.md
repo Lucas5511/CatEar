@@ -229,6 +229,17 @@ retêm como itens com dono, não follow-up genérico.
   (JSON / campos nomeados). owner: dev da 1.7.
   evidence: `lib/exercicios/presentation/interval_exercise_screen.dart`
   (`IntervalPractice.answer`).
+  ✅ **RESOLVIDO na Story 1.7 (2026-09-08).** A 1.7 revisitou e decidiu que a
+  estrutura não pertence à linha de log: ela pertence ao **evento**. Uma sessão
+  concluída sai por `SessionResultReporter.report(SessionResultReported)` — um
+  objeto tipado numa interface tipada, com `sessionId` e uma `ExerciseAttempt`
+  por tentativa —, e é isso que o Epic 2 vai consumir, não um texto reparseado.
+  O `developer.log` por tentativa em `IntervalPractice.answer` fica como está:
+  é o rastro de debug de um card, sem consumidor. O que virou estruturado foi o
+  log de sessão (`LoggingSessionResultReporter`), em campos nomeados
+  (`sessionId=… exerciseType=… wasCorrect=… errorType=… reactionTimeMs=…`),
+  porque essa é a única linha que alguém leria para conferir uma sessão
+  enquanto a Progressão não existe.
 
 ## Deferred from: /code-review de f180ff5..0f153b3 (Story 1.4, 2026-09-03)
 

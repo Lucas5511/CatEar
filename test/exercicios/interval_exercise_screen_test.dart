@@ -38,15 +38,30 @@ class _RealCatalogBundle extends CachingAssetBundle {
   Future<ByteData> load(String key) async => ByteData.sublistView(_bytes);
 }
 
+/// Captures what a completed session reports, in place of the logging
+/// reporter. The seam Epic 2 will take over is the same one a test uses here —
+/// there is no global bus to spy on (AR-4).
+class _RecordingReporter implements SessionResultReporter {
+  final List<SessionResultReported> events = [];
+
+  @override
+  void report(SessionResultReported event) => events.add(event);
+}
+
 ProviderContainer _container({
   FakeAudioService? audio,
   Object? catalogError,
   Set<ExerciseType>? types,
   PracticeTimings? timings,
+  SessionResultReporter? reporter,
 }) {
   return ProviderContainer(
     overrides: [
       audioServiceProvider.overrideWithValue(audio ?? FakeAudioService()),
+      // Story 1.7: where a completed session goes. Left as the logging default
+      // unless a test cares, so the emission path is exercised either way.
+      if (reporter != null)
+        sessionResultReporterProvider.overrideWithValue(reporter),
       // The product loop holds all three tappable types since Story 1.5.
       // Narrowing the type set is how a test isolates one of them in this
       // exact widget tree, without any product change.
@@ -98,6 +113,28 @@ Future<void> _settleFirstMotif(
 
 PracticeState _state(ProviderContainer c) =>
     c.read(intervalPracticeProvider).value!;
+
+/// Answers the current card correctly and asks the loop to move on, through the
+/// notifier — the same calls the card makes, without waiting out a motif and a
+/// flourish per exercise. Used where the subject is the *session* around the
+/// cards rather than one card's behaviour.
+void _answerAndAdvance(ProviderContainer c) {
+  final notifier = c.read(intervalPracticeProvider.notifier);
+  notifier.answer(_state(c).answer, 100);
+  notifier.advance();
+}
+
+/// Walks [count] exercises the same way.
+void _answerMany(ProviderContainer c, int count) {
+  for (var i = 0; i < count; i++) {
+    _answerAndAdvance(c);
+  }
+}
+
+/// The offer view's two buttons — equal by construction, so the test names
+/// them the way a learner reads them.
+Finder _continuePracticing() => find.text('Continuar praticando');
+Finder _finishForToday() => find.text('Encerrar por hoje');
 
 /// The one private view that renders every exercise. Finding the *same* widget
 /// type for interval, chord and scale is what "no per-type widget" means at
@@ -1261,6 +1298,335 @@ void main() {
     expect(find.text('Voltar'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  // ------------------------------------------------- Story 1.7: the session
+
+  testWidgets('two openings of the screen are two sessions', (tester) async {
+    // AR-11: the id is minted at the opening and never reused. Epic 2 dedupes
+    // ingestion *by* this id, so a repeat would be a dropped session.
+    //
+    // Opened the way the app opens it — pushed, popped, pushed again — because
+    // that is what makes the second opening a second session: the notifier is
+    // auto-dispose, so leaving the screen tears it down and coming back builds
+    // a new one.
+    final container = _container();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container, home: const _PushToPractice()));
+
+    await tester.tap(find.text('go'));
+    await tester.pumpAndSettle();
+    await _settleFirstMotif(tester, container);
+    final idA = _state(container).session.sessionId;
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('go'));
+    await tester.pumpAndSettle();
+    await _settleFirstMotif(tester, container);
+    final idB = _state(container).session.sessionId;
+
+    final uuidV4 = RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+    );
+    expect(idA, matches(uuidV4));
+    expect(idB, matches(uuidV4));
+    expect(idA, isNot(idB));
+  });
+
+  testWidgets('walking the sequence to the end reports it exactly once', (
+    tester,
+  ) async {
+    final reporter = _RecordingReporter();
+    final container = _container(reporter: reporter);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester, container);
+    final sessionId = _state(container).session.sessionId;
+
+    _answerMany(container, _state(container).loop.length);
+    await tester.pump();
+
+    expect(
+      find.text('Você percorreu todos os exercícios de hoje.'),
+      findsOneWidget,
+    );
+    expect(reporter.events, hasLength(1));
+    expect(reporter.events.single.sessionId, sessionId);
+    expect(reporter.events.single.attempts, hasLength(39));
+  });
+
+  testWidgets('the end-of-session view rebuilding does not report again', (
+    tester,
+  ) async {
+    // The failure this guards is invisible on screen: emitting from `build`
+    // looks identical and doubles Epic 2's progress. So the view is rebuilt on
+    // purpose — a theme change, then plain pumps — and the count is re-checked.
+    final reporter = _RecordingReporter();
+    final container = _container(reporter: reporter);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester, container);
+
+    _answerMany(container, _state(container).loop.length);
+    await tester.pump();
+    expect(reporter.events, hasLength(1));
+
+    await tester.pumpWidget(_app(container, brightness: Brightness.dark));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Você percorreu todos os exercícios de hoje.'),
+      findsOneWidget,
+    );
+    expect(
+      reporter.events,
+      hasLength(1),
+      reason: 'the finished view rebuilds; the session is reported once',
+    );
+  });
+
+  testWidgets('leaving mid-session reports nothing', (tester) async {
+    final reporter = _RecordingReporter();
+    final container = _container(reporter: reporter);
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(_app(container, home: const _PushToPractice()));
+    await tester.tap(find.text('go'));
+    await tester.pumpAndSettle();
+    await _settleFirstMotif(tester, container);
+
+    _answerMany(container, 5);
+    await tester.pump();
+    expect(_state(container).attempts, hasLength(5));
+
+    // Back out the way the app does: pop the route, scope still mounted.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(IntervalExerciseScreen), findsNothing);
+    expect(
+      reporter.events,
+      isEmpty,
+      reason: 'abandonment discards the attempts — nothing is reported',
+    );
+  });
+
+  testWidgets('reaching the end without answering reports nothing', (
+    tester,
+  ) async {
+    // The empty loop lands straight on the end view: an ending, but no signal.
+    final reporter = _RecordingReporter();
+    final container = _container(
+      types: const <ExerciseType>{},
+      reporter: reporter,
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Você percorreu todos os exercícios de hoje.'),
+      findsOneWidget,
+    );
+    expect(reporter.events, isEmpty);
+  });
+
+  testWidgets('the end offer waits for the card in progress, then appears '
+      'between exercises', (tester) async {
+    final container = _container(
+      timings: const PracticeTimings(endOfferAfter: Duration(seconds: 30)),
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester, container);
+
+    // Answer the first card well before the target time.
+    _answerAndAdvance(container);
+    await tester.pump();
+    expect(_continuePracticing(), findsNothing);
+
+    // Cross the target while a card is on screen: nothing interrupts it.
+    await tester.pump(const Duration(seconds: 31));
+    expect(_activeView(), findsOneWidget);
+    expect(_continuePracticing(), findsNothing);
+    expect(_finishForToday(), findsNothing);
+    expect(_state(container).phase, isNot(AnswerPhase.offeringEnd));
+
+    // Only when that card is done does the offer take the gap.
+    _answerAndAdvance(container);
+    await tester.pump();
+    expect(_state(container).phase, AnswerPhase.offeringEnd);
+    expect(_activeView(), findsNothing);
+    expect(_continuePracticing(), findsOneWidget);
+    expect(_finishForToday(), findsOneWidget);
+    expect(find.text('Você já praticou 2 exercícios hoje.'), findsOneWidget);
+  });
+
+  testWidgets('the offer counts the work and blames nobody (UX-DR12)', (
+    tester,
+  ) async {
+    final container = _container(
+      timings: const PracticeTimings(endOfferAfter: Duration(seconds: 30)),
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester, container);
+    await tester.pump(const Duration(seconds: 31));
+
+    _answerAndAdvance(container);
+    await tester.pump();
+
+    expect(find.text('Você já praticou 1 exercício hoje.'), findsOneWidget);
+    // Stopping and continuing are the same widget with the same width: the
+    // layout is half of "escolhas iguais".
+    final buttons = tester
+        .widgetList<FilledButton>(
+          find.ancestor(
+            of: _continuePracticing().at(0),
+            matching: find.byType(FilledButton),
+          ),
+        )
+        .length;
+    expect(buttons, 1);
+    expect(
+      tester
+          .widget<SizedBox>(
+            find
+                .ancestor(
+                  of: _continuePracticing(),
+                  matching: find.byType(SizedBox),
+                )
+                .first,
+          )
+          .width,
+      tester
+          .widget<SizedBox>(
+            find
+                .ancestor(
+                  of: _finishForToday(),
+                  matching: find.byType(SizedBox),
+                )
+                .first,
+          )
+          .width,
+    );
+    for (final guilt in ['certeza', 'desistir', 'perder', 'Você parou']) {
+      expect(find.textContaining(guilt), findsNothing, reason: guilt);
+    }
+    expect(_fredoka(), findsNothing, reason: 'the mascot does not plead');
+  });
+
+  testWidgets('declining the offer keeps the session going, and it does not '
+      'come back', (tester) async {
+    final reporter = _RecordingReporter();
+    final container = _container(
+      timings: const PracticeTimings(endOfferAfter: Duration(seconds: 30)),
+      reporter: reporter,
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester, container);
+    await tester.pump(const Duration(seconds: 31));
+
+    _answerAndAdvance(container);
+    await tester.pump();
+    expect(_state(container).phase, AnswerPhase.offeringEnd);
+
+    await tester.tap(_continuePracticing());
+    await tester.pump();
+    expect(_state(container).phase, AnswerPhase.answering);
+    expect(_state(container).index, 1, reason: 'back on the card that waited');
+    expect(reporter.events, isEmpty, reason: 'the session has not ended');
+
+    // Every later gap is past the target too; the offer must not nag.
+    await _settleFirstMotif(tester, container);
+    for (var i = 0; i < 5; i++) {
+      _answerAndAdvance(container);
+      await tester.pump();
+      expect(_state(container).phase, isNot(AnswerPhase.offeringEnd));
+    }
+
+    // ... and the session still ends normally, once, at the end.
+    _answerMany(container, _state(container).loop.length);
+    await tester.pump();
+    expect(reporter.events, hasLength(1));
+    expect(reporter.events.single.attempts, hasLength(39));
+  });
+
+  testWidgets(
+    'accepting the offer ends the session and reports what was done',
+    (tester) async {
+      final reporter = _RecordingReporter();
+      final container = _container(
+        timings: const PracticeTimings(endOfferAfter: Duration(seconds: 30)),
+        reporter: reporter,
+      );
+      addTearDown(container.dispose);
+      await tester.pumpWidget(_app(container));
+      await _settleFirstMotif(tester, container);
+      final sessionId = _state(container).session.sessionId;
+
+      // Two answers inside the target window, one after it — the third is the
+      // gap that carries the offer, so three attempts are on the books.
+      _answerMany(container, 2);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 31));
+      _answerAndAdvance(container);
+      await tester.pump();
+      expect(_state(container).phase, AnswerPhase.offeringEnd);
+      expect(_state(container).attempts, hasLength(3));
+
+      await tester.tap(_finishForToday());
+      await tester.pump();
+
+      expect(reporter.events, hasLength(1));
+      expect(reporter.events.single.sessionId, sessionId);
+      expect(
+        reporter.events.single.attempts,
+        hasLength(3),
+        reason: 'an early ending reports exactly what was answered',
+      );
+      expect(_state(container).ending, SessionEnd.acceptedOffer);
+      expect(
+        find.text('Sessão encerrada. Você praticou 3 exercícios hoje.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Você percorreu todos os exercícios de hoje.'),
+        findsNothing,
+        reason: 'ending early did not walk the whole sequence',
+      );
+      expect(find.text('Voltar'), findsOneWidget);
+
+      // Rebuilding this view must not report a second time either.
+      await tester.pumpWidget(_app(container, brightness: Brightness.dark));
+      await tester.pumpAndSettle();
+      expect(reporter.events, hasLength(1));
+    },
+  );
+}
+
+/// A home that pushes the practice screen, so a test can pop back out of it the
+/// way the app does — with the `ProviderScope` still mounted.
+class _PushToPractice extends StatelessWidget {
+  const _PushToPractice();
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: Builder(
+      builder: (context) => ElevatedButton(
+        onPressed: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => const IntervalExerciseScreen(),
+          ),
+        ),
+        child: const Text('go'),
+      ),
+    ),
+  );
 }
 
 /// Always throws a non-`AudioError` from playback — exercises `_playMotif`'s
