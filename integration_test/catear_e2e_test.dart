@@ -26,6 +26,7 @@ import 'package:catear/app/home_shell.dart';
 import 'package:catear/audio/audio.dart';
 import 'package:catear/core/core.dart';
 import 'package:catear/curriculo/curriculo.dart';
+import 'package:catear/exercicios/exercicios.dart';
 import 'package:catear/exercicios/presentation/interval_exercise_screen.dart';
 import 'package:catear/progressao/progressao.dart';
 import 'package:drift/native.dart';
@@ -51,10 +52,14 @@ import '../test/support/audio_service_contract.dart';
 /// [practiceTypes] narrows the practice loop to one exercise type so a journey
 /// can reach a chord or a scale card without answering its way there — the
 /// real audio path stays untouched, only the selection changes.
+///
+/// [reporter] replaces the logging `SessionResultReporter` so a journey can
+/// assert on what a session did — or did not — report (Story 1.7).
 Future<void> pumpApp(
   WidgetTester tester, {
   bool failFirst = false,
   Set<ExerciseType>? practiceTypes,
+  SessionResultReporter? reporter,
 }) async {
   var shouldFail = failFirst;
   await tester.pumpWidget(
@@ -62,6 +67,8 @@ Future<void> pumpApp(
       overrides: [
         if (practiceTypes != null)
           practiceExerciseTypesProvider.overrideWithValue(practiceTypes),
+        if (reporter != null)
+          sessionResultReporterProvider.overrideWithValue(reporter),
         databaseProvider.overrideWith((ref) async {
           if (shouldFail) {
             shouldFail = false;
@@ -76,6 +83,15 @@ Future<void> pumpApp(
     ),
   );
   await tester.pumpAndSettle();
+}
+
+/// Captures whatever a completed session reports, in place of the logging
+/// reporter (Story 1.7).
+class _RecordingReporter implements SessionResultReporter {
+  final List<SessionResultReported> events = [];
+
+  @override
+  void report(SessionResultReported event) => events.add(event);
 }
 
 NavigationBar navBar(WidgetTester tester) =>
@@ -447,6 +463,35 @@ void main() {
 
       expect(find.byType(HomeShell), findsOneWidget);
       expect(find.text('Que bom ter você no CatEar!'), findsOneWidget);
+    });
+
+    // Story 1.7: abandonment over the real provider graph. The widget suite
+    // covers the rule; this covers the wiring — that the reporter the app
+    // actually resolves is never reached by a session the learner walked out
+    // of, attempts already on the books.
+    testWidgets('leaving after answering reports no session', (tester) async {
+      final reporter = _RecordingReporter();
+      await pumpApp(tester, reporter: reporter);
+
+      await tester.tap(find.text('Praticar'));
+      await tester.pumpAndSettle();
+
+      // Play the motif for real, then answer one exercise.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(FilledButton).first);
+      await tester.pumpAndSettle();
+      expectExplainedResult(tester);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeShell), findsOneWidget);
+      expect(
+        reporter.events,
+        isEmpty,
+        reason: 'an abandoned session reports nothing, however far it got',
+      );
     });
   });
 

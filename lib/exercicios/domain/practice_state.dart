@@ -11,9 +11,16 @@ import 'package:flutter/foundation.dart';
 
 import 'exercise_attempt.dart';
 import 'exercise_question.dart';
+import 'session_result.dart';
 
-/// Where the loop is in answering the current exercise.
-enum AnswerPhase { answering, correct, incorrect, finished }
+/// Where the loop is.
+///
+/// The first three are about the current exercise; [offeringEnd] and [finished]
+/// are about the session around it. [offeringEnd] sits *between* two exercises
+/// — the previous one is answered and the next one has not mounted yet — which
+/// is the only place UX-DR12's offer is allowed to appear: never over a card in
+/// progress, never over playing audio.
+enum AnswerPhase { answering, correct, incorrect, offeringEnd, finished }
 
 const Object _keep = Object();
 
@@ -21,6 +28,7 @@ const Object _keep = Object();
 @immutable
 class PracticeState {
   PracticeState({
+    required this.session,
     required List<ExerciseQuestion> loop,
     required Map<ExerciseType, List<AnswerOption>> pool,
     required this.index,
@@ -28,6 +36,8 @@ class PracticeState {
     required this.phase,
     required List<ExerciseAttempt> attempts,
     this.picked,
+    this.endOffered = false,
+    this.ending,
   }) : loop = List.unmodifiable(loop),
        // Deep: `Map.unmodifiable` freezes the map, not the lists inside it,
        // and `pool[type]` is handed straight to callers.
@@ -37,6 +47,11 @@ class PracticeState {
        }),
        options = List.unmodifiable(options),
        attempts = List.unmodifiable(attempts);
+
+  /// The session this loop belongs to: its `sessionId` (UUID v4) and the
+  /// instant it opened. Minted once per opening of the screen — never derived
+  /// from the loop, and never reused across two openings.
+  final PracticeSession session;
 
   /// Every question of the loop, in stage order (39 in v1: 23 intervals,
   /// 8 chords, 8 scales).
@@ -54,12 +69,23 @@ class PracticeState {
 
   final AnswerPhase phase;
 
-  /// Attempts recorded so far, one per answered exercise. In-memory only;
-  /// Story 1.7 consumes these.
+  /// Attempts recorded so far, one per answered exercise. In-memory only —
+  /// they leave this object as the `attempts` of a `SessionResultReported`
+  /// when the session completes, and are dropped on abandonment.
   final List<ExerciseAttempt> attempts;
 
   /// The option the user tapped, once answered.
   final AnswerOption? picked;
+
+  /// Whether the end offer has already been made. Once made and declined it
+  /// does not come back — an offer that reappeared after every exercise would
+  /// be the nagging UX-DR12 rules out.
+  final bool endOffered;
+
+  /// How the session ended, once it has. `null` while it is running, and
+  /// `null` forever for an abandoned session — abandonment is the absence of
+  /// an ending, not one of its kinds.
+  final SessionEnd? ending;
 
   ExerciseQuestion get current => loop[index];
   AnswerOption get answer => current.answer;
@@ -70,7 +96,10 @@ class PracticeState {
     AnswerPhase? phase,
     List<ExerciseAttempt>? attempts,
     Object? picked = _keep,
+    bool? endOffered,
+    SessionEnd? ending,
   }) => PracticeState(
+    session: session,
     loop: loop,
     pool: pool,
     index: index ?? this.index,
@@ -78,5 +107,9 @@ class PracticeState {
     phase: phase ?? this.phase,
     attempts: attempts ?? this.attempts,
     picked: identical(picked, _keep) ? this.picked : picked as AnswerOption?,
+    endOffered: endOffered ?? this.endOffered,
+    // No sentinel: an ending is set once and never cleared, so there is
+    // nothing to express by passing `null` explicitly.
+    ending: ending ?? this.ending,
   );
 }

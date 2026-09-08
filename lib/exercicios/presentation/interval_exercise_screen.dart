@@ -7,8 +7,16 @@
 /// options, a correct answer gets an immediate visual + sonic flourish (no
 /// mascot), a wrong one gets the mascot's bubble naming the confusion
 /// (Story 1.6, sentence built in `../domain/error_explanation.dart`), and every
-/// attempt's reaction time is captured into an [ExerciseAttempt] that is logged
-/// (no persistence — that is Story 1.7).
+/// attempt's reaction time is captured into an [ExerciseAttempt].
+///
+/// Story 1.7 turned that loop into a *session*: it opens with a `sessionId`
+/// (UUID v4), offers to stop once between exercises at the target time
+/// (UX-DR12), and on completion reports its attempts exactly once through
+/// `sessionResultReporterProvider`. Leaving mid-session reports nothing. The
+/// rule that decides which of the two happened is in
+/// `../domain/session_result.dart`, and the emission is in the notifier, never
+/// in a `build` — the end-of-session view rebuilds, and a duplicate event
+/// would be duplicate progress in Epic 2.
 ///
 /// Nothing here knows which *kind* of exercise it is showing: it consumes
 /// [ExerciseQuestion] / [AnswerOption] and the per-type difference lives in
@@ -33,7 +41,9 @@ import '../domain/exercise_attempt.dart';
 import '../domain/exercise_question.dart';
 import '../domain/interval_options.dart';
 import '../domain/interval_practice.dart';
+import '../data/session_result_reporter.dart';
 import '../domain/practice_state.dart';
+import '../domain/session_result.dart';
 import 'exercise_card.dart';
 import 'phrase_player.dart';
 
@@ -65,6 +75,7 @@ class PracticeTimings {
   const PracticeTimings({
     this.flourishGap = defaultFlourishGap,
     this.advanceDelay = const Duration(milliseconds: 700),
+    this.endOfferAfter = const Duration(minutes: 12),
   });
 
   /// Gap between the notes of the correct-answer flourish.
@@ -72,6 +83,14 @@ class PracticeTimings {
 
   /// How long a correct answer is celebrated before the loop auto-advances.
   final Duration advanceDelay;
+
+  /// How long the session runs before it offers to stop (Story 1.7) — the
+  /// middle of the 10-15 min target of FR-5, so the offer lands inside the
+  /// window rather than at its edge.
+  ///
+  /// Injectable for the same reason the other two are, only more so: at the
+  /// product value a test of the offer would have to wait twelve minutes.
+  final Duration endOfferAfter;
 }
 
 /// Override in tests to drive the screen with timings a test can name.
@@ -82,13 +101,26 @@ PracticeTimings practiceTimings(Ref ref) => const PracticeTimings();
 /// catalog through `curriculoRepositoryProvider` and never touches Drift.
 @riverpod
 class IntervalPractice extends _$IntervalPractice {
+  /// Guards the one-shot emission. An instance field, not state: it is a fact
+  /// about a side effect already performed, and it must not travel into a
+  /// rebuilt widget or a `copyWith`. Reset on every `build`, because a rebuilt
+  /// notifier is a new session.
+  bool _reported = false;
+
+  late PracticeTimings _timings;
+
   @override
   Future<PracticeState> build() async {
+    _reported = false;
+    _timings = ref.watch(practiceTimingsProvider);
     final types = ref.watch(practiceExerciseTypesProvider);
     final curriculum = await ref.watch(curriculoRepositoryProvider).load();
     final loop = practiceLoop(curriculum, types: types);
     final pool = practicePool(curriculum, types: types);
     return PracticeState(
+      // A new session per build: opening the screen twice mints two ids, and
+      // so does a retry after a catalog failure (no attempts existed yet).
+      session: PracticeSession(startedAt: clock.now()),
       loop: loop,
       pool: pool,
       index: 0,
@@ -136,9 +168,11 @@ class IntervalPractice extends _$IntervalPractice {
     );
   }
 
-  /// Moves to the next exercise, or to the end-of-loop screen. A no-op unless
-  /// an exercise has actually been answered — guards against a double advance
-  /// (the celebration timer racing the manual "Continuar").
+  /// Moves to the next exercise, to the end offer, or to the end of the
+  /// session. A no-op unless an exercise has actually been answered — guards
+  /// against a double advance (the celebration timer racing the manual
+  /// "Continuar"), and is also what keeps the offer out of a card in progress:
+  /// this only ever runs between two exercises.
   void advance() {
     final s = state.value;
     if (s == null) return;
@@ -147,17 +181,69 @@ class IntervalPractice extends _$IntervalPractice {
     }
     final next = s.index + 1;
     if (next >= s.loop.length) {
-      state = AsyncData(s.copyWith(phase: AnswerPhase.finished, picked: null));
+      _finish(s, SessionEnd.reachedEnd);
       return;
     }
-    state = AsyncData(
-      s.copyWith(
-        index: next,
-        phase: AnswerPhase.answering,
-        options: _optionsFor(s.loop, s.pool, next),
-        picked: null,
-      ),
+    // The next exercise is selected either way; the offer only holds it back.
+    // Declining therefore mounts the card that was already decided, with no
+    // second pass through the option generator.
+    final moved = s.copyWith(
+      index: next,
+      options: _optionsFor(s.loop, s.pool, next),
+      picked: null,
     );
+    if (_shouldOfferEnd(s)) {
+      state = AsyncData(
+        moved.copyWith(phase: AnswerPhase.offeringEnd, endOffered: true),
+      );
+      return;
+    }
+    state = AsyncData(moved.copyWith(phase: AnswerPhase.answering));
+  }
+
+  /// Whether this gap between exercises is the one that carries the offer:
+  /// the target time has passed and the offer has not been made yet.
+  bool _shouldOfferEnd(PracticeState s) =>
+      !s.endOffered &&
+      s.session.elapsedAt(clock.now()) >= _timings.endOfferAfter;
+
+  /// Takes the offer: the session is over, and it counts.
+  void acceptEndOffer() {
+    final s = state.value;
+    if (s == null || s.phase != AnswerPhase.offeringEnd) return;
+    _finish(s, SessionEnd.acceptedOffer);
+  }
+
+  /// Turns the offer down: back to the card that was already waiting. The
+  /// offer does not come back (`endOffered` stays set).
+  void declineEndOffer() {
+    final s = state.value;
+    if (s == null || s.phase != AnswerPhase.offeringEnd) return;
+    state = AsyncData(s.copyWith(phase: AnswerPhase.answering));
+  }
+
+  /// Ends the session and reports it — **once**, and never from a `build`.
+  ///
+  /// Both guards are load-bearing and neither is redundant: the phase checks in
+  /// the callers make a second call impossible through the UI, while
+  /// [_reported] makes it impossible full stop. Epic 2 aggregates on top of
+  /// this event, so a duplicate is duplicated progress, and that is the kind of
+  /// bug a happy-path test never sees.
+  void _finish(PracticeState s, SessionEnd end) {
+    state = AsyncData(
+      s.copyWith(phase: AnswerPhase.finished, picked: null, ending: end),
+    );
+    if (_reported) return;
+    final event = sessionResultFor(
+      session: s.session,
+      end: end,
+      attempts: s.attempts,
+    );
+    // `null` is an abandoned session — here, only the zero-answer walk to the
+    // end of an empty sequence. Nothing to report is a normal outcome.
+    if (event == null) return;
+    _reported = true;
+    ref.read(sessionResultReporterProvider).report(event);
   }
 }
 
@@ -188,8 +274,18 @@ class IntervalExerciseScreen extends ConsumerWidget {
                   onRetry: () => ref.invalidate(intervalPracticeProvider),
                 ),
           data: (state) => switch (state.phase) {
-            AnswerPhase.finished => _EndOfLoopView(
+            AnswerPhase.finished => _EndOfSessionView(
+              state: state,
               onBack: () => Navigator.of(context).pop(),
+            ),
+            // Between two exercises: the next card has not mounted, so nothing
+            // is playing and nothing is half-answered under this.
+            AnswerPhase.offeringEnd => _EndOfferView(
+              answered: state.attempts.length,
+              onContinue: () =>
+                  ref.read(intervalPracticeProvider.notifier).declineEndOffer(),
+              onFinish: () =>
+                  ref.read(intervalPracticeProvider.notifier).acceptEndOffer(),
             ),
             _ => _ActiveExerciseView(key: ValueKey(state.index), state: state),
           },
@@ -674,14 +770,36 @@ class _RetryView extends StatelessWidget {
   }
 }
 
-class _EndOfLoopView extends StatelessWidget {
-  const _EndOfLoopView({required this.onBack});
+/// The offer to stop, made once, between two exercises (UX-DR12).
+///
+/// Guilt-free by construction: it says what was done, and puts continuing and
+/// stopping side by side as the same kind of button — no "tem certeza?", no
+/// warning colour, nothing that frames stopping as giving up. Both outcomes
+/// count: a session ended here reports its attempts exactly like one walked to
+/// the end, which is why the copy can promise that the work is kept.
+///
+/// It is a view inside the screen, not a `showDialog`: the epic's "o modal
+/// empilha só um nível" is satisfied by stacking nothing, and an Android back
+/// press here leaves the session (abandonment) rather than dismissing a
+/// barrier and stranding the learner in an ambiguous state.
+class _EndOfferView extends StatelessWidget {
+  const _EndOfferView({
+    required this.answered,
+    required this.onContinue,
+    required this.onFinish,
+  });
 
-  final VoidCallback onBack;
+  /// How many exercises have been answered so far — the progress the offer
+  /// reports back. Always >= 1: the offer is only reachable after an answer.
+  final int answered;
+
+  final VoidCallback onContinue;
+  final VoidCallback onFinish;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final count = answered == 1 ? '1 exercício' : '$answered exercícios';
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(CatSpacing.x5),
@@ -691,9 +809,76 @@ class _EndOfLoopView extends StatelessWidget {
             Semantics(
               liveRegion: true,
               child: Text(
-                // Type-agnostic on purpose: the loop holds intervals, chords
-                // and scales since Story 1.5, so naming one of them would lie.
-                'Você percorreu todos os exercícios de hoje.',
+                'Você já praticou $count hoje.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.titleLarge,
+              ),
+            ),
+            const SizedBox(height: CatSpacing.x3),
+            Text(
+              'Dá para continuar ou parar por aqui — o que você fez até agora '
+              'conta do mesmo jeito.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: CatSpacing.x5),
+            // Same widget, same width, same weight for both: the layout is
+            // half of "escolhas iguais", and a tonal/filled pair would nudge.
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: onContinue,
+                child: const Text('Continuar praticando'),
+              ),
+            ),
+            const SizedBox(height: CatSpacing.x3),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: onFinish,
+                child: const Text('Encerrar por hoje'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The end of the session, however it got here.
+///
+/// Renders only; the session was already reported by the notifier before this
+/// view existed. Nothing may be emitted from here — this rebuilds on a theme
+/// change, a rotation or any neighbouring `setState`.
+class _EndOfSessionView extends StatelessWidget {
+  const _EndOfSessionView({required this.state, required this.onBack});
+
+  final PracticeState state;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final answered = state.attempts.length;
+    final count = answered == 1 ? '1 exercício' : '$answered exercícios';
+    final headline = state.ending == SessionEnd.acceptedOffer
+        // Ending early is a complete session, so it is closed like one — no
+        // "você parou antes", nothing that reads as a smaller result.
+        ? 'Sessão encerrada. Você praticou $count hoje.'
+        // Type-agnostic on purpose: the loop holds intervals, chords
+        // and scales since Story 1.5, so naming one of them would lie.
+        : 'Você percorreu todos os exercícios de hoje.';
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(CatSpacing.x5),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                headline,
                 textAlign: TextAlign.center,
                 style: theme.textTheme.titleLarge,
               ),
