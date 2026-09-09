@@ -19,6 +19,7 @@ import 'dart:math' as math;
 import 'package:catear/curriculo/curriculo.dart';
 import 'package:flutter/foundation.dart';
 
+import 'exercise_variation.dart';
 import 'motif.dart';
 
 /// One selectable answer, projected off a catalog spec.
@@ -116,6 +117,7 @@ class ExerciseQuestion {
     required List<String> audioSampleRefs,
     required List<MotifEvent> motif,
     this.variantKey,
+    this.variant,
   }) : audioSampleRefs = List.unmodifiable(audioSampleRefs),
        motif = List.unmodifiable(motif);
 
@@ -144,17 +146,33 @@ class ExerciseQuestion {
   /// Wall time of one [motif] playback.
   Duration get motifTotal => motifDuration(motif);
 
-  /// What separates two exercises that share an [answer] — the melodic
-  /// direction in v1, `null` for a type that has none. Folded into
-  /// [optionSeed] so an ascending and a descending M3 do not get the same
-  /// option order.
-  final Object? variantKey;
+  /// What separates two exercises that share an [answer]: the melodic direction
+  /// and, since Story 1.8, the root the relation is played from. `null` for a
+  /// type that has neither.
+  ///
+  /// **A `String`, not an enum** (Story 1.8). It used to hold a `Direction`,
+  /// and an enum's `hashCode` is identity-based and re-drawn per isolate, so
+  /// [optionSeed] — and with it the order of the buttons on screen — changed on
+  /// every launch while the code and its tests claimed determinism. Controlled
+  /// variation does not share a codebase with accidental variation.
+  final String? variantKey;
+
+  /// The variation this question is playing, or `null` for a question that does
+  /// not vary (a chord, whose root is baked into its pre-rendered block).
+  ///
+  /// Carried on the question so the practice loop can record what was actually
+  /// heard, without re-deriving it from the refs.
+  final ExerciseVariant? variant;
 
   /// Deterministic shuffle seed for this question at loop position [index].
   ///
-  /// Same shape as Story 1.4's `Object.hash(interval.id, direction, index)`, so
-  /// the option order the learner sees for every interval is byte-identical.
-  int optionSeed(int index) => Object.hash(answer.id, variantKey, index);
+  /// Stable **across processes**, which `Object.hash` is not: its seed is
+  /// `identityHashCode(Object)`, re-drawn per isolate, so even an all-`String`
+  /// argument list hashes differently on every run (measured 2026-09-09). The
+  /// polynomial hash below is arithmetic on code units only — same answer on
+  /// the VM, in an AOT build and on the web, today and after a restart.
+  int optionSeed(int index) =>
+      stableSeed('${answer.id}|${variantKey ?? ''}|$index');
 
   @override
   bool operator ==(Object other) =>
@@ -164,7 +182,8 @@ class ExerciseQuestion {
       other.answer == answer &&
       listEquals(other.audioSampleRefs, audioSampleRefs) &&
       listEquals(other.motif, motif) &&
-      other.variantKey == variantKey;
+      other.variantKey == variantKey &&
+      other.variant == variant;
 
   @override
   int get hashCode => Object.hash(
@@ -174,6 +193,7 @@ class ExerciseQuestion {
     Object.hashAll(audioSampleRefs),
     Object.hashAll(motif),
     variantKey,
+    variant,
   );
 
   @override
@@ -192,71 +212,111 @@ const Map<ExerciseType, String> exercisePrompts = {
   ExerciseType.resolution: 'Que cadência é esta?',
 };
 
-/// Projects one catalog [Exercise] onto the type-agnostic model.
+/// Projects one catalog [Exercise] onto the type-agnostic model, optionally
+/// transposed to [variant]'s root (Story 1.8).
 ///
 /// This switch is the **single** place the sealed `Exercise` hierarchy is taken
 /// apart. Adding an exercise type means adding a branch here, not a widget.
-ExerciseQuestion questionFor(Exercise exercise) => switch (exercise) {
-  IntervalExercise() => ExerciseQuestion(
-    type: ExerciseType.interval,
-    prompt: exercisePrompts[ExerciseType.interval]!,
-    answer: AnswerOption(
-      id: exercise.interval.id,
-      nameUi: exercise.interval.nameUi,
-      semitoneProfile: [exercise.interval.semitones],
+///
+/// With [variant] `null` the refs are the catalog's own, byte for byte — which
+/// is what a chord always gets (its root is inside the pre-rendered block) and
+/// what every type gets when a caller asks for no variation. The motif contour
+/// is computed from the refs either way, so transposing changes the pitches and
+/// nothing about the rhythm.
+ExerciseQuestion questionFor(Exercise exercise, {ExerciseVariant? variant}) {
+  final refs = variant == null
+      ? exercise.audioSampleRefs
+      : refsForVariant(exercise, variant);
+  return switch (exercise) {
+    IntervalExercise() => ExerciseQuestion(
+      type: ExerciseType.interval,
+      prompt: exercisePrompts[ExerciseType.interval]!,
+      answer: AnswerOption(
+        id: exercise.interval.id,
+        nameUi: exercise.interval.nameUi,
+        semitoneProfile: [exercise.interval.semitones],
+      ),
+      audioSampleRefs: refs,
+      // `r0, r1, r0` — unchanged since Story 1.4.
+      motif: intervalMotif(refs),
+      variantKey: _variantKey(exercise.direction, variant),
+      variant: variant,
     ),
-    audioSampleRefs: exercise.audioSampleRefs,
-    // `r0, r1, r0` — unchanged since Story 1.4.
-    motif: intervalMotif(exercise.audioSampleRefs),
-    variantKey: exercise.direction,
-  ),
-  ChordExercise() => ExerciseQuestion(
-    type: ExerciseType.chord,
-    prompt: exercisePrompts[ExerciseType.chord]!,
-    answer: AnswerOption(
-      id: exercise.chord.id,
-      nameUi: exercise.chord.nameUi,
-      // Already semitone offsets above the root: [4, 7] for a major triad.
-      semitoneProfile: exercise.chord.intervals,
+    ChordExercise() => ExerciseQuestion(
+      type: ExerciseType.chord,
+      prompt: exercisePrompts[ExerciseType.chord]!,
+      answer: AnswerOption(
+        id: exercise.chord.id,
+        nameUi: exercise.chord.nameUi,
+        // Already semitone offsets above the root: [4, 7] for a major triad.
+        semitoneProfile: exercise.chord.intervals,
+      ),
+      // Verbatim from the catalog, in every session — a chord is outside the
+      // variation by decision (human, 2026-09-09), not by omission.
+      audioSampleRefs: exercise.audioSampleRefs,
+      // Block -> arpeggio -> block, off the positional ref contract Story 1.4b
+      // wrote: `[block, root, third, fifth]`.
+      motif: chordMotif(exercise.audioSampleRefs),
     ),
-    audioSampleRefs: exercise.audioSampleRefs,
-    // Block -> arpeggio -> block, off the positional ref contract Story 1.4b
-    // wrote: `[block, root, third, fifth]`.
-    motif: chordMotif(exercise.audioSampleRefs),
-  ),
-  ScaleExercise() => ExerciseQuestion(
-    type: ExerciseType.scale,
-    prompt: exercisePrompts[ExerciseType.scale]!,
-    answer: AnswerOption(
-      id: exercise.scale.id,
-      nameUi: exercise.scale.nameUi,
-      semitoneProfile: degreesFromSteps(exercise.scale.steps),
+    ScaleExercise() => ExerciseQuestion(
+      type: ExerciseType.scale,
+      prompt: exercisePrompts[ExerciseType.scale]!,
+      answer: AnswerOption(
+        id: exercise.scale.id,
+        nameUi: exercise.scale.nameUi,
+        semitoneProfile: degreesFromSteps(exercise.scale.steps),
+      ),
+      audioSampleRefs: refs,
+      // All 8 notes in playing order (`direction` is already applied to the
+      // refs), at scale pace.
+      motif: scaleMotif(refs),
+      variantKey: _variantKey(exercise.direction, variant),
+      variant: variant,
     ),
-    audioSampleRefs: exercise.audioSampleRefs,
-    // All 8 notes in the order the catalog stores them (`direction` is already
-    // applied to the refs), at scale pace.
-    motif: scaleMotif(exercise.audioSampleRefs),
-    variantKey: exercise.direction,
-  ),
-  ResolutionExercise() => ExerciseQuestion(
-    type: ExerciseType.resolution,
-    prompt: exercisePrompts[ExerciseType.resolution]!,
-    answer: AnswerOption(
-      id: exercise.cadence.id,
-      nameUi: exercise.cadence.nameUi,
-      // A cadence is a degree progression, not a pitch set: no profile, so
-      // every pair sits at distance 0 and every error resolves to `far-miss`.
-      semitoneProfile: const [],
+    ResolutionExercise() => ExerciseQuestion(
+      type: ExerciseType.resolution,
+      prompt: exercisePrompts[ExerciseType.resolution]!,
+      answer: AnswerOption(
+        id: exercise.cadence.id,
+        nameUi: exercise.cadence.nameUi,
+        // A cadence is a degree progression, not a pitch set: no profile, so
+        // every pair sits at distance 0 and every error resolves to `far-miss`.
+        semitoneProfile: const [],
+      ),
+      audioSampleRefs: exercise.audioSampleRefs,
+      // No contour. A cadence is sung (Epic 3) and `requiresVoice` keeps it out
+      // of the tap loop, so nothing plays it today — and pacing two chords is a
+      // musical decision this story has no basis to make. Story 3.5, which turns
+      // resolution on, gives it one; until then an empty motif surfaces the
+      // audio banner rather than inventing a rhythm nobody chose.
+      motif: const [],
     ),
-    audioSampleRefs: exercise.audioSampleRefs,
-    // No contour. A cadence is sung (Epic 3) and `requiresVoice` keeps it out
-    // of the tap loop, so nothing plays it today — and pacing two chords is a
-    // musical decision this story has no basis to make. Story 3.5, which turns
-    // resolution on, gives it one; until then an empty motif surfaces the
-    // audio banner rather than inventing a rhythm nobody chose.
-    motif: const [],
-  ),
-};
+  };
+}
+
+/// The stable term folded into [ExerciseQuestion.optionSeed]: the direction,
+/// plus the root once the question is a transposition of one.
+String _variantKey(Direction direction, ExerciseVariant? variant) =>
+    variant == null ? direction.name : '${direction.name}:${variant.rootToken}';
+
+/// A hash of [input] that is the same in every process, on every platform.
+///
+/// `Object.hash` is not: its seed is `identityHashCode(Object)`, drawn afresh
+/// per isolate. `String.hashCode` happens to be stable on the VM but is not
+/// specified to be, and differs under dart2js. So the seed of anything a user
+/// can *see* — the order of the answer buttons — is computed here instead.
+///
+/// A Horner-scheme polynomial hash reduced modulo 2^31-1 at every step: the
+/// intermediate product stays below 2^38, well inside the range JavaScript
+/// integers represent exactly, so the VM and the web agree digit for digit.
+int stableSeed(String input) {
+  const modulus = 0x7FFFFFFF; // 2^31 - 1, prime
+  var hash = 0;
+  for (var i = 0; i < input.length; i++) {
+    hash = (hash * 131 + input.codeUnitAt(i)) % modulus;
+  }
+  return hash;
+}
 
 /// Turns a scale's successive `steps` into semitone offsets above the tonic.
 ///

@@ -387,6 +387,25 @@ void main() {
       await tester.pumpAndSettle();
 
       expectExplainedResult(tester);
+
+      // Story 1.8: the anti-decoreba history, over the REAL provider graph —
+      // the practice notifier, the Progressão repository and a real Drift
+      // database, none of them faked. The widget suite stubs the repository,
+      // so a broken table, a broken migration or a broken provider wiring
+      // would only ever show up here.
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(HomeShell)),
+      );
+      final recorded = await container
+          .read(variantHistoryRepositoryProvider)
+          .recent(limit: variantWindow);
+      expect(
+        recorded,
+        isNotEmpty,
+        reason: 'the exercise just played must be on the record',
+      );
+      expect(recorded.first.relationKey, startsWith('interval:'));
+      expect(recorded.first.rootToken, startsWith('sax_'));
     });
 
     // Story 1.5 gave chord and scale their own contours, and they are a

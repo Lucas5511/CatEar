@@ -397,6 +397,18 @@ e o gate não sabe distinguir, então isso fica como acordo, não como código.
 
   **Correção de rationale:** o bloco congelado da 1.4b justifica as 2 raízes com "com raiz fixa o exercício vira reconhecimento de altura absoluta". O efeito real é mais modesto — 2 raízes **dobram o custo de memorizar**, não eliminam o mecanismo: o exercício continua sendo função determinística de 8 arquivos com resposta constante, e um aluno pode decorar o som do arquivo sem ouvir a relação musical. Isso contamina o sinal de habilidade que o Epic 2 constrói sobre as tentativas. Mantido como está na 1.5 por decisão do humano em 2026-09-05: a alternativa disponível não compra a propriedade que falta.
 
+  ✅ **RESOLVIDO na Story 1.8 (2026-09-09), por decisão do humano: acorde fica fora
+  da variação.** A 1.8 escolheu a terceira saída, que este item não tinha
+  enumerado — não despachar acorde da variação nem reabrir o `Never`, mas
+  declarar acorde **invariante por decisão**, com os refs vindo verbatim do
+  catálogo e um teste fixando isso. Deixa de ser lacuna e vira comportamento
+  definido. As duas alternativas foram recusadas pelo motivo que este próprio
+  item mediu: 5 raízes custam 20 arquivos e 20 exercícios em `s-acordes` para
+  entregar o mesmo espalhamento de registro, e a síntese em runtime é decisão de
+  arquitetura, não de story. O que a 1.8 entrega no lugar é variação real onde
+  ela é barata: intervalo rende de 2 a 14 raízes por transposição, sem um único
+  arquivo novo.
+
 ## Deferred from: split da spec da Story 1.5 (2026-09-05, step-02 token gate)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-5a-seam-type-agnostic-do-fluxo-de-pratica.md`
@@ -420,6 +432,20 @@ e o gate não sabe distinguir, então isso fica como acordo, não como código.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-5a-seam-type-agnostic-do-fluxo-de-pratica.md`
   summary: `ExerciseQuestion.optionSeed` não é estável entre execuções — a ordem das alternativas na tela muda a cada abertura do app, embora o código e os testes afirmem determinismo.
   evidence: Medido em 2026-09-05 ao tentar escrever a golden de paridade da 1.5a. `optionSeed(index)` é `Object.hash(answer.id, variantKey, index)`, e `variantKey` é o enum `Direction`, cujo `hashCode` é de identidade e é re-sorteado a cada isolate. Três execuções da mesma posição do loop deram `dirHash` 274387664 / 279878334 / 157970473 e seeds 489118127 / 15087377 / 409236786, enquanto o `hashCode` do `id` (String) ficou fixo em 129053990. **Pré-existente**: a Story 1.4 já fazia `Object.hash(exercise.interval.id, exercise.direction, index)`. Passou despercebido porque `interval_options_test` só assere que o *mesmo* seed produz a mesma ordem, o que qualquer fórmula satisfaz. A golden da 1.5a contorna congelando a *seleção* (independente de ordem) com o seed real e a *ordenação* com um seed explícito. Correção: usar `variantKey` estável (`.name` ou `.index`) no hash. Decidir junto da Story 1.8, que é quem precisa de variação **controlada** em vez de acidental.
+
+  ✅ **RESOLVIDO na Story 1.8 (2026-09-09).** A investigação foi mais fundo do
+  que a correção prevista: trocar o enum por `.name` **não** bastava.
+  `Object.hash` semeia com `identityHashCode(Object)`, que é re-sorteado por
+  isolate, então `Object.hash('M3', 'asc', 3)` — argumentos todos `String`/`int`
+  — também muda a cada processo (medido em 2026-09-09: 248788449 / 411301743 /
+  525213966 em três execuções). Duas mudanças, então: `variantKey` virou
+  `String` (`'asc:sax_c4'` — direção **e** raiz, que é o que a 1.8 passou a
+  variar), e `optionSeed` deixou de usar `Object.hash` por um hash polinomial
+  próprio (`stableSeed`, Horner mod 2^31-1, produto intermediário abaixo de
+  2^38 para o VM e o JS concordarem). A golden que a 1.5a não conseguiu
+  escrever agora existe: `interval_practice_test.dart` congela a **ordem** das
+  39 posições pelo `optionSeed` real, com os literais produzidos em outro
+  processo.
 
 ## Triagem de owners (2026-09-06) — Story 1.5
 
@@ -484,3 +510,44 @@ afirmava), a contagem por sessão redigida como total do dia ("hoje" →
   nenhum evento é emitido a mais. O custo da correção é maior que o do defeito.
   Se um dia o relógio da sessão passar a alimentar algo que conte pontos, esta
   decisão precisa ser revista — aí o salto vira dado errado, não UX estranha.
+
+## Deferred from: planejamento da Story 1.8 (2026-09-09)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-8-geracao-de-variacoes.md`
+  summary: Uma única amostra nova — `sax_db5` — destravaria a variação da escala
+  maior (hoje presa em C4) e alargaria os intervalos do topo. É a adição de maior
+  alavanca por arquivo em todo o conjunto de amostras.
+  evidence: **Medido em 2026-09-09, para não redescobrir do zero.** O inventário
+  são 14 notas isoladas, C4–C5 cromático mais D5 — falta exatamente Db5. Raízes
+  possíveis hoje por relação: intervalos P1 14 · m2 12 · M2 12 · m3 11 · M3 10 ·
+  P4 9 · TT 8 · P5 7 · m6 6 · M6 5 · m7 4 · M7 3 · P8 2; escalas maior **1** (só
+  C4, porque Ré maior exige Db5), menor 2, dórica 2, mixolídia 2. Com `sax_db5`
+  o conjunto vira 0–14 contínuo, e o ganho é maior do que a primeira nota desta
+  entrada dizia (corrigida em 2026-09-09, no review da 1.8): **todos** os
+  intervalos ganham uma raiz — P1 15 · m2 14 · M2 13 · m3 12 · M3 11 · P4 10 ·
+  TT 9 · P5 8 · m6 7 · M6 6 · m7 5 · M7 4 · P8 3 — e **todas** as escalas vão a
+  3 raízes, com a maior saindo de 1 para 3. Um arquivo compra variação para a
+  escala maior, que hoje não varia de forma alguma. Custo: o pipeline de amostra da 1.3b (fonte University of Iowa MIS,
+  receita de conversão em `docs/audio/samples-v1.md`) **mais** uma mudança de
+  catálogo — o gate de órfãos de `audio_assets_bundle_test.dart` exige que todo
+  arquivo em `assets/audio/` seja referenciado por algum exercício, então um
+  arquivo solto reprova o build. A Story 1.8 aceitou o teto sem ele por decisão
+  do humano em 2026-09-09; este item existe para que a decisão possa ser revista
+  com o número na mão. Dono natural: a próxima story que produzir amostras.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-8-geracao-de-variacoes.md`
+  summary: O `epic-1-context.md` está desatualizado em relação a `epics.md` e ao
+  `DESIGN.md`, mas recompilá-lo derruba as tags de rastreabilidade (AD-*, AR-*,
+  FR-*, UX-DR-*) que outros artefatos e comentários de código citam por id.
+  evidence: O planejamento da Story 1.8 recompilou o arquivo e o resultado
+  perdeu as 11 referências de identificador que a versão anterior tinha,
+  enquanto o código novo desta mesma story cita "AD-2" em três arquivos
+  (`lib/core/database/recent_variants.dart`,
+  `lib/progressao/domain/variant_history.dart`,
+  `lib/exercicios/presentation/interval_exercise_screen.dart`). A recompilação
+  foi revertida no review da 1.8 — o conteúdo novo era correto, mas nenhuma
+  story deveria trocar rastreabilidade por atualidade de passagem. Um refresh
+  deliberado precisa preservar as tags nos itens que outros documentos alcançam
+  por id; enquanto isso, o arquivo descreve a 1.6 de forma desatualizada e não
+  menciona os eixos de variação. Dono natural: a próxima story que precisar do
+  contexto do épico atualizado, ou uma passada de manutenção de artefatos.
