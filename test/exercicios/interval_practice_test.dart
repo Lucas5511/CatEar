@@ -41,9 +41,12 @@ void main() {
       reason: 'resolution is sung (Epic 3) and has no tap-to-answer surface',
     );
     expect(loop.first.answer.id, 'P1');
-    expect(loop.first.variantKey, Direction.asc);
+    // Since Story 1.8 the key carries the root as well as the direction, and
+    // it is a String: an enum's hashCode is identity-based, which made
+    // `optionSeed` — and the order of the buttons — differ per launch.
+    expect(loop.first.variantKey, 'asc:sax_c4');
     expect(loop.last.answer.id, 'TT');
-    expect(loop.last.variantKey, Direction.desc);
+    expect(loop.last.variantKey, 'desc:sax_c4');
 
     // The catalog ships each of the 4 modes twice, asc and desc. Without a
     // `variantKey` the two would be equal under `==`/`hashCode` and share an
@@ -52,8 +55,8 @@ void main() {
     final majorScales = scales.where((q) => q.answer.id == 'major').toList();
     expect(majorScales.length, 2);
     expect(majorScales.map((q) => q.variantKey).toSet(), {
-      Direction.asc,
-      Direction.desc,
+      'asc:sax_c4',
+      'desc:sax_c4',
     });
     expect(majorScales[0], isNot(majorScales[1]));
     expect(
@@ -292,17 +295,16 @@ void main() {
 
   test('GOLDEN: option selection and ordering are frozen', () async {
     // A determinism-only assertion cannot guard the ranking: any seed formula
-    // is deterministic for a fixed seed. Two goldens, because only one of the
-    // two halves is stable across runs:
+    // is deterministic for a fixed seed. So two goldens:
     //
-    //  * ORDERING, with an explicit seed — this is the ranking + shuffle, and
-    //    it is what a refactor of `answerOptionsFor` would move.
-    //  * SELECTION, through the real `optionSeed` — the option *set* per loop
-    //    position. The order there cannot be frozen: `optionSeed` hashes a
-    //    `Direction` enum, whose hashCode is identity-based and therefore
-    //    re-randomised every run (measured 2026-09-05: the same position
-    //    yielded seeds 489118127 / 15087377 / 409236786 across three runs).
-    //    That instability predates this story and is filed in deferred-work.md.
+    //  * ORDERING, with an explicit seed — the ranking + shuffle, and what a
+    //    refactor of `answerOptionsFor` would move.
+    //  * ORDERING through the real `optionSeed` — see the test below. Story 1.8
+    //    made that half freezable for the first time: `optionSeed` used to hash
+    //    a `Direction` enum, whose hashCode is identity-based and re-randomised
+    //    per isolate (measured 2026-09-05: the same position yielded seeds
+    //    489118127 / 15087377 / 409236786 across three runs), so the order on
+    //    screen changed on every launch.
     //
     // Regenerated for Story 1.5: the loop is 39 long, so the interval
     // positions sit at different indices and the shuffle input moved. The
@@ -364,7 +366,6 @@ void main() {
         orderedBySeedIndex[i],
         reason: 'ranking or shuffle moved at loop position $i',
       );
-      // Selection is order-independent, so it survives the unstable seed.
       expect(
         answerOptionsForQuestion(
           loop[i],
@@ -380,6 +381,90 @@ void main() {
       );
     }
   });
+
+  test('GOLDEN: the option ORDER on screen is the same in every process', () {
+    // The literals below were produced by a *different* process. A run that
+    // agrees with them is the cross-process guarantee the story owes; a run
+    // that computes its own expectation would agree with any formula, which is
+    // exactly how the enum-hashCode instability survived three stories.
+    expect(stableSeed(''), 0);
+    expect(stableSeed('M3|asc:sax_c4|0'), 985624910);
+    expect(stableSeed('M3|desc:sax_c4|0'), 1523439576);
+    expect(stableSeed('major|asc:sax_c4|19'), 438355059);
+    // Different index, different variation, different relation -> different
+    // seed. (Not a hash-quality claim; just that all three reach the seed.)
+    expect(stableSeed('M3|asc:sax_c4|1'), isNot(stableSeed('M3|asc:sax_c4|0')));
+    expect(stableSeed('M3|asc:sax_d4|0'), isNot(stableSeed('M3|asc:sax_c4|0')));
+  });
+
+  test(
+    'GOLDEN: the whole loop\'s option order, through the real seed',
+    () async {
+      // Frozen for the first time in Story 1.8 — see the test above for why it
+      // could not be frozen before. Regenerate deliberately, never to "fix" a
+      // red run: a change here is a change to what the learner sees.
+      const orderedByRealSeed = <String>[
+        'm2,m3,P1,M2', // interval
+        'M7,P8,m7,M6', // interval
+        'TT,P5,m6,M6', // interval
+        'm3,P4,M2,M3', // interval
+        'P4,m3,M2,M3', // interval
+        'P4,M2,M3,m3', // interval
+        'M2,m3,P4,M3', // interval
+        'major,augmented,diminished,minor', // chord
+        'augmented,major,minor,diminished', // chord
+        'augmented,minor,major,diminished', // chord
+        'major,minor,augmented,diminished', // chord
+        'major,minor,diminished,augmented', // chord
+        'minor,major,diminished,augmented', // chord
+        'augmented,diminished,major,minor', // chord
+        'augmented,major,diminished,minor', // chord
+        'm3,m2,M3,M2', // interval
+        'M3,M2,m2,m3', // interval
+        'm2,M2,m3,P1', // interval
+        'm3,P1,m2,M2', // interval
+        'natural_minor,dorian,major,mixolydian', // scale
+        'major,natural_minor,mixolydian,dorian', // scale
+        'major,mixolydian,natural_minor,dorian', // scale
+        'mixolydian,major,natural_minor,dorian', // scale
+        'dorian,major,mixolydian,natural_minor', // scale
+        'dorian,natural_minor,mixolydian,major', // scale
+        'mixolydian,natural_minor,major,dorian', // scale
+        'natural_minor,mixolydian,dorian,major', // scale
+        'M3,TT,P4,P5', // interval
+        'M3,P5,P4,TT', // interval
+        'M7,m6,M6,m7', // interval
+        'm6,M7,M6,m7', // interval
+        'P5,m6,TT,M6', // interval
+        'M6,TT,P5,m6', // interval
+        'P8,M6,M7,m7', // interval
+        'P8,M7,M6,m7', // interval
+        'm7,M7,M6,P8', // interval
+        'M7,P8,m7,M6', // interval
+        'TT,P4,M3,P5', // interval
+        'P4,P5,TT,M3', // interval
+      ];
+
+      final curriculum = await loadReal();
+      // No history: the first session of a fresh install, which is the only
+      // loop whose refs — and therefore whose variantKeys — are fixed.
+      final loop = practiceLoop(curriculum);
+      final pool = practicePool(curriculum);
+      expect(loop.length, orderedByRealSeed.length);
+
+      for (var i = 0; i < loop.length; i++) {
+        expect(
+          answerOptionsForQuestion(
+            loop[i],
+            pool,
+            seed: loop[i].optionSeed(i),
+          ).map((o) => o.id).join(','),
+          orderedByRealSeed[i],
+          reason: 'the option order moved at loop position $i',
+        );
+      }
+    },
+  );
 
   test('a single type still flows through the same machinery', () async {
     final curriculum = await loadReal();

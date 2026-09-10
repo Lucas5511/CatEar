@@ -9,6 +9,7 @@ import 'package:catear/exercicios/exercicios.dart';
 import 'package:catear/exercicios/presentation/exercise_card.dart';
 import 'package:catear/exercicios/presentation/interval_exercise_screen.dart';
 import 'package:catear/exercicios/presentation/phrase_player.dart';
+import 'package:catear/progressao/progressao.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -60,16 +61,95 @@ class _ThrowingReporter implements SessionResultReporter {
   }
 }
 
+/// An in-memory stand-in for the Progressão history (Story 1.8).
+///
+/// The default in every test: the real one goes through `databaseProvider`,
+/// which needs `path_provider` and therefore a platform channel no widget test
+/// has. Starting empty is also what makes the loop reproducible here — every
+/// position falls back to the root the catalog writes, exactly as it did before
+/// this story.
+class _FakeVariantHistory implements VariantHistoryRepository {
+  _FakeVariantHistory({List<VariantUse>? seed}) : uses = [...?seed];
+
+  /// Newest first, like the real repository returns.
+  final List<VariantUse> uses;
+
+  @override
+  Future<List<VariantUse>> recent({required int limit}) async =>
+      uses.take(limit).toList();
+
+  @override
+  Future<List<VariantUse>> lastUsePerRoot() async {
+    // Latest use per (relation, root), over everything recorded — the real
+    // repository groups in SQL; here the list is short enough to fold.
+    final latest = <(String, String), VariantUse>{};
+    for (final use in uses) {
+      final key = (use.relationKey, use.rootToken);
+      final known = latest[key];
+      if (known == null || use.sequence > known.sequence) latest[key] = use;
+    }
+    return latest.values.toList();
+  }
+
+  @override
+  Future<void> record({
+    required String relationKey,
+    required String rootToken,
+  }) async {
+    uses.insert(
+      0,
+      VariantUse(
+        relationKey: relationKey,
+        rootToken: rootToken,
+        sequence: uses.isEmpty ? 1 : uses.first.sequence + 1,
+      ),
+    );
+  }
+}
+
+/// Stands in for the day the database will not open.
+class _FailingVariantHistory implements VariantHistoryRepository {
+  int reads = 0;
+  int writes = 0;
+
+  @override
+  Future<List<VariantUse>> recent({required int limit}) async {
+    reads++;
+    throw StateError('database unavailable');
+  }
+
+  @override
+  Future<List<VariantUse>> lastUsePerRoot() async {
+    reads++;
+    throw StateError('database unavailable');
+  }
+
+  @override
+  Future<void> record({
+    required String relationKey,
+    required String rootToken,
+  }) async {
+    writes++;
+    throw StateError('database unavailable');
+  }
+}
+
 ProviderContainer _container({
   FakeAudioService? audio,
   Object? catalogError,
   Set<ExerciseType>? types,
   PracticeTimings? timings,
   SessionResultReporter? reporter,
+  VariantHistoryRepository? variantHistory,
 }) {
   return ProviderContainer(
     overrides: [
       audioServiceProvider.overrideWithValue(audio ?? FakeAudioService()),
+      // Story 1.8: the anti-decoreba history. Faked by default — see
+      // `_FakeVariantHistory`.
+      variantHistoryRepositoryProvider.overrideWithValue(
+        variantHistory ?? _FakeVariantHistory(),
+      ),
       // Story 1.7: where a completed session goes. Left as the logging default
       // unless a test cares, so the emission path is exercised either way.
       if (reporter != null)
@@ -684,6 +764,9 @@ void main() {
             return fake;
           }),
           catalogAssetBundleProvider.overrideWithValue(_RealCatalogBundle()),
+          variantHistoryRepositoryProvider.overrideWithValue(
+            _FakeVariantHistory(),
+          ),
         ],
       );
       addTearDown(container.dispose);
@@ -719,6 +802,9 @@ void main() {
           return fake;
         }),
         catalogAssetBundleProvider.overrideWithValue(_RealCatalogBundle()),
+        variantHistoryRepositoryProvider.overrideWithValue(
+          _FakeVariantHistory(),
+        ),
       ],
     );
     addTearDown(container.dispose);
@@ -744,6 +830,9 @@ void main() {
         overrides: [
           audioServiceProvider.overrideWithValue(_ThrowingAudioService()),
           catalogAssetBundleProvider.overrideWithValue(_RealCatalogBundle()),
+          variantHistoryRepositoryProvider.overrideWithValue(
+            _FakeVariantHistory(),
+          ),
         ],
       );
       addTearDown(container.dispose);
@@ -1641,6 +1730,9 @@ void main() {
           return fake;
         }),
         catalogAssetBundleProvider.overrideWithValue(_RealCatalogBundle()),
+        variantHistoryRepositoryProvider.overrideWithValue(
+          _FakeVariantHistory(),
+        ),
         practiceTimingsProvider.overrideWithValue(
           const PracticeTimings(endOfferAfter: Duration(seconds: 30)),
         ),
@@ -1685,6 +1777,9 @@ void main() {
           return fake;
         }),
         catalogAssetBundleProvider.overrideWithValue(_RealCatalogBundle()),
+        variantHistoryRepositoryProvider.overrideWithValue(
+          _FakeVariantHistory(),
+        ),
       ],
     );
     addTearDown(container.dispose);
@@ -1730,6 +1825,121 @@ void main() {
     await tester.pumpWidget(_app(container, brightness: Brightness.dark));
     await tester.pumpAndSettle();
     expect(reporter.calls, 1);
+  });
+
+  // ------------------------------------------- Story 1.8: variation history
+
+  testWidgets('every exercise reached is recorded, and only the ones reached', (
+    tester,
+  ) async {
+    final history = _FakeVariantHistory();
+    final container = _container(variantHistory: history);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester, container);
+
+    // The window counts exercises, not sessions: the first card is on screen,
+    // so exactly one is on the record.
+    expect(history.uses, hasLength(1));
+    expect(history.uses.single.relationKey, 'interval:P1:asc');
+    expect(history.uses.single.rootToken, 'sax_c4');
+
+    _answerMany(container, 4);
+    await tester.pump();
+    expect(
+      history.uses.length,
+      5,
+      reason: 'one row per exercise presented, none for the ones not reached',
+    );
+
+    // …and abandoning here leaves those five behind, which is the point: they
+    // were heard.
+    await tester.pumpWidget(_app(container, home: const SizedBox.shrink()));
+    await tester.pumpAndSettle();
+    expect(history.uses, hasLength(5));
+  });
+
+  testWidgets('a chord never enters the history', (tester) async {
+    final history = _FakeVariantHistory();
+    final container = _container(
+      types: const {ExerciseType.chord},
+      variantHistory: history,
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester, container);
+
+    final s = _state(container);
+    expect(s.loop, hasLength(8));
+    _answerMany(container, s.loop.length - 1);
+    await tester.pump();
+
+    expect(
+      history.uses,
+      isEmpty,
+      reason: 'a chord is invariant by decision — nothing to remember',
+    );
+  });
+
+  test('the second session does not replay the first', () async {
+    // The acceptance criterion, through the real notifier: what the first
+    // session recorded is what the second one avoids. Driven without a widget
+    // tree on purpose — two sessions in one `testWidgets` would mean swapping
+    // the `ProviderScope`, which unbinds the first container's vsync and leaves
+    // its auto-dispose task pending (see `_app`).
+    final history = _FakeVariantHistory();
+
+    final first = _container(variantHistory: history);
+    addTearDown(first.dispose);
+    final firstLoop = (await first.read(intervalPracticeProvider.future)).loop;
+    _answerMany(first, 4);
+    // The recording is fire-and-forget; let the queued microtasks run.
+    await Future<void>.delayed(Duration.zero);
+    expect(history.uses, hasLength(5));
+
+    final second = _container(variantHistory: history);
+    addTearDown(second.dispose);
+    final secondLoop = (await second.read(intervalPracticeProvider.future))
+        .loop;
+
+    expect(secondLoop, hasLength(firstLoop.length));
+    for (var i = 0; i < 5; i++) {
+      if (firstLoop[i].variant == null) continue; // a chord: invariant
+      expect(
+        secondLoop[i].audioSampleRefs,
+        isNot(firstLoop[i].audioSampleRefs),
+        reason: 'position $i sounds the same two sessions running',
+      );
+    }
+  });
+
+  testWidgets('an unavailable database costs variety, never the session', (
+    tester,
+  ) async {
+    final history = _FailingVariantHistory();
+    final container = _container(variantHistory: history);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(_app(container));
+    await _settleFirstMotif(tester, container);
+
+    final s = _state(container);
+    expect(s.loop, hasLength(39), reason: 'the whole sequence is still there');
+    expect(s.phase, AnswerPhase.answering);
+    // Falls back to the catalog's own refs — the P1 of a fresh install.
+    expect(s.current.audioSampleRefs, ['sax_c4', 'sax_c4']);
+    // Both halves of the history are asked for, and both are allowed to fail:
+    // the window (what may not play) and the per-root recency (what orders
+    // what is left). Degrading on one but not the other would silently bring
+    // back the two-root alternation instead of falling back to the catalog.
+    expect(history.reads, 2);
+
+    // The card answers, advances, and the failing writes do not escape as
+    // unhandled async errors.
+    _answerMany(container, 3);
+    await tester.pump();
+    expect(_state(container).index, 3);
+    expect(history.writes, greaterThan(1));
+    expect(tester.takeException(), isNull);
   });
 }
 
