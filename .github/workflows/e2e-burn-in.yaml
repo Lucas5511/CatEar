@@ -83,8 +83,13 @@ jobs:
       - name: Burn-in
         uses: reactivecircus/android-emulator-runner@v2
         # `inputs.*` is user-controlled: it reaches the shell only through an
-        # env var, quoted, and is validated as an integer before use. Never
-        # interpolate it into the script body.
+        # env var, quoted, and is validated as an integer inside the script.
+        # Never interpolate it into the script body.
+        #
+        # The loop lives in tool/e2e_burn_in.sh, not here: this action runs
+        # `script` line by line, so any multi-line shell construct is a syntax
+        # error before the first test runs (that is how the job failed silently
+        # for eight nights in a row — see the script header).
         env:
           ITERATIONS: ${{ github.event.inputs.iterations || '5' }}
         with:
@@ -94,22 +99,4 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: |
-            case "$ITERATIONS" in
-              ''|*[!0-9]*) echo "iterations must be a positive integer, got: $ITERATIONS"; exit 1 ;;
-            esac
-            pass=0
-            fail=0
-            for i in $(seq 1 "$ITERATIONS"); do
-              echo "::group::burn-in iteration $i/$ITERATIONS"
-              if flutter test integration_test; then
-                pass=$((pass + 1))
-                echo "iteration $i: PASS"
-              else
-                fail=$((fail + 1))
-                echo "iteration $i: FAIL"
-              fi
-              echo "::endgroup::"
-            done
-            echo "burn-in tally: $pass passed, $fail failed, out of $ITERATIONS"
-            [ "$fail" -eq 0 ]
+          script: bash tool/e2e_burn_in.sh
