@@ -28,7 +28,7 @@ Hoje o app abre numa Home com 4 abas, o botão **Praticar** abre uma sessão de 
 
 Rastreamento: [`sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml) · review de qualidade mais recente: [`quality-review-epic-1-2026-09-15.md`](_bmad-output/test-artifacts/quality-review-epic-1-2026-09-15.md) (gate **CONCERNS** — a 1.9 pode seguir; o fechamento do épico tem pendências listadas lá).
 
-`flutter test` → **366 testes** · `integration_test/` → **22 testes E2E** on-device (rodam no CI em emulador Android).
+`flutter test` → **373 testes** · `integration_test/` → **22 testes E2E** on-device (rodam no CI em emulador Android).
 
 ---
 
@@ -52,7 +52,7 @@ Código gerado (`*.g.dart`, `*.drift.dart`) é **git-ignorado** e regenerado no 
 - **`core/`** — tokens de design, `ThemeData` claro/escuro, `CatText`, `AppDatabase` + DAOs + `databaseProvider`. Modelos/tabelas gerados pelo Drift nunca cruzam a fronteira `data/ → domain/` nem saem de `core/`.
 - **`lib/app/`** — o shell (`HomeShell`, `HomeScreen`, `SettingsScreen`, `DatabaseErrorScreen`) — preocupações de shell, não features.
 - **`audio/`** — `AudioService` (interface) + `_JustAudioService` (real) + `FakeAudioService` (`lib/audio/testing.dart`, importável só de `test/`). Só este módulo importa `just_audio`/`record`.
-- **`exercicios/`** — o loop de prática: `ExerciseQuestion`/`AnswerOption` (type-agnostic), motifs, explicação de erro, `PracticeSession`/`SessionResultReported`, geração de variações; `IntervalExerciseScreen` é a tela (apesar do nome, serve intervalo, acorde e escala).
+- **`exercicios/`** — o loop de prática: `ExerciseQuestion`/`AnswerOption` (type-agnostic), motifs, explicação de erro, `PracticeSession`/`SessionResultReported`, geração de variações; `PracticeScreen` é a tela de sessão, `PracticeController` o notifier e `ExerciseCardFlow` o card de um exercício (dirigido por `onAnswer`/`onAdvance`, reusável pelo Nivelamento) — serve intervalo, acorde e escala.
 - **`progressao/`** — fatia mínima da AD-2: `VariantHistoryRepository` (histórico de variações) + placeholders de Skill Tree/Progresso. O Epic 2 estende este módulo.
 - **Fluxo de mutação:** `UI → Riverpod Notifier → Repository (domain) → Drift DAO`. Leitura reativa: Drift stream → Repository → provider → UI. Nenhuma tela chama Drift direto.
 - **Convenções:** IDs de entidade = `String` UUID v4 · datas ISO 8601 UTC no banco · erros de domínio como `sealed class ... implements Exception` por módulo, nunca exception genérica cruzando fronteira · estado assíncrono via `AsyncValue`.
@@ -83,7 +83,7 @@ assets/
   curriculum/catalog_v1.json   # conteúdo pedagógico da v1
   fonts/                       # Fredoka (só para falas do mascote / telas de vitória)
 tool/             # gates de CI (acima), ci.sh, setup.sh
-test/             # unit/widget (366) — usa FakeAudioService e Drift em memória
+test/             # unit/widget (373) — usa FakeAudioService e Drift em memória
 integration_test/ # E2E on-device (22) — áudio real, Drift real, provider graph real
 drift_schemas/    # snapshots de schema v1, v2
 docs/             # auditoria de contraste, proveniência das amostras
@@ -120,7 +120,7 @@ export PATH="$HOME/development/flutter/bin:$PATH"
 ```bash
 flutter pub get
 dart run build_runner build --delete-conflicting-outputs   # gera *.g.dart / *.drift.dart (git-ignorados)
-flutter test                                                # 366 testes unit/widget, ~1,5 min
+flutter test                                                # 373 testes unit/widget, ~1,5 min
 dart run tool/ci.sh                                          # todos os gates de CI, exit agregado
 ```
 
@@ -191,7 +191,6 @@ Cada story passa por: spec → revisão adversarial (3 lentes) → implementaç�
 Lista completa em [`deferred-work.md`](_bmad-output/implementation-artifacts/deferred-work.md) e no [quality review](_bmad-output/test-artifacts/quality-review-epic-1-2026-09-15.md). Destaques:
 
 - **Burn-in do E2E** consertado em 2026-09-15, ainda sem tally lida — disparar manualmente (`workflow_dispatch`, `iterations=3`) e ler o número antes de tornar `e2e-android` obrigatório.
-- **`interval_exercise_screen.dart` virou monólito** (notifier de sessão + 10 widgets, 1.031 linhas) e o nome não reflete o que faz — refatorar **antes** da Story 1.9, que vai reusar o fluxo.
 - **iOS nunca executado** — só build smoke; NFR-4 (paridade) sem evidência.
 - **Roteamento de navegação:** a Story 1.1 usa `IndexedStack` de placeholders; a escolha entre `go_router` e `Navigator` aninhado por aba fica para antes da Story 2.6.
 - **`main()` sem handler global de erro** (R10 do test-design), **cobertura não medida** (R6).

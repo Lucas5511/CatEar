@@ -41,9 +41,11 @@
 //
 //     Scanned over the token stream, so a mention in a doc comment or inside a
 //     string literal is not a violation; a declaration or a use is. An
-//     identifier that merely CONTAINS a banned name (`IntervalExerciseScreen`)
-//     is a different token and is not a violation either. Note the .dart filter
-//     below skips .g.dart, so generated code is out of scope.
+//     identifier that merely CONTAINS a banned name (`IntervalExerciseScreen`,
+//     the pre-1.8b name of `PracticeScreen`, kept as the fixture in
+//     test/module_boundary_test.dart) is a different token and is not a
+//     violation either. Note the .dart filter below skips .g.dart, so
+//     generated code is out of scope.
 //
 // Exit code is non-zero on any violation, naming the offending file and line.
 
@@ -127,8 +129,9 @@ void main(List<String> args) {
 
     // Rule 6: no exercise-type symbol inside the practice presentation layer.
     // Walked over tokens rather than the AST so comments and string literals
-    // are naturally out of scope, and matched on the whole lexeme so
-    // `IntervalExerciseScreen` is not mistaken for `IntervalExercise`.
+    // are naturally out of scope, and matched on the whole lexeme so an
+    // identifier such as `IntervalExerciseScreen` (the pre-1.8b name of
+    // `PracticeScreen`) is not mistaken for `IntervalExercise`.
     if (libRelative.startsWith(_typeAgnosticDir)) {
       for (
         var token = parsed.unit.beginToken;

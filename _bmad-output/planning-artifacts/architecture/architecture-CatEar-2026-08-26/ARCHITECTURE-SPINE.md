@@ -32,9 +32,11 @@ A regra que dá nome ao paradigma — **dono único de estado** — é o que imp
 
 - **Binds:** todo o código de aplicação.
 - **Prevents:** um módulo técnico transversal (ex: "services/", "controllers/") viraria um catch-all onde regras de features diferentes se misturam e passam a depender umas das outras de forma implícita.
-- **Rule:** cada módulo (`nivelamento/`, `exercicios/`, `progressao/`, `audio/`, `curriculo/`) contém sua própria `data/`, `domain/` e `presentation/`. Nenhum módulo importa a camada `presentation/` de outro módulo — comunicação entre módulos só via `domain/` (contratos/interfaces) ou eventos.
+- **Rule:** cada módulo (`nivelamento/`, `exercicios/`, `progressao/`, `audio/`, `curriculo/`) contém sua própria `data/`, `domain/` e `presentation/`. Nenhum módulo importa a camada `presentation/` de outro módulo — comunicação entre módulos só via `domain/` (contratos/interfaces) ou eventos, salvo o contrato de UI compartilhado abaixo.
 
-  **Enforcement (não só convenção):** cada módulo expõe um único arquivo barrel público (`{modulo}.dart`, reexportando só o necessário de `domain/`); `data/` e `presentation/` de um módulo nunca são importados fora dele — reforçado com a regra de lint `implementation_imports` do pacote `custom_lint`/`import_lint` configurada no CI local desde o início (mesmo hobby/solo), porque o PRD/deck já preveem possíveis colaboradores futuros — depender só de disciplina pessoal não escala pra esse cenário.
+  **Enforcement (não só convenção):** cada módulo expõe um único arquivo barrel público (`{modulo}.dart`, reexportando só o necessário de `domain/`, salvo o contrato de UI compartilhado abaixo); `data/` e `presentation/` de um módulo nunca são importados fora dele — reforçado com a regra de lint `implementation_imports` do pacote `custom_lint`/`import_lint` configurada no CI local desde o início (mesmo hobby/solo), porque o PRD/deck já preveem possíveis colaboradores futuros — depender só de disciplina pessoal não escala pra esse cenário.
+
+  **Widget como contrato de UI compartilhado:** um módulo pode reexportar de `presentation/` via barrel `show` um widget que é contrato de UI compartilhado — o consumidor importa o barrel, nunca o arquivo — desde que o widget seja dirigido por dados e callbacks, sem ler o notifier do módulo dono. Precedente: `IntervalExerciseScreen` exportado para o shell desde a 1.4; desde a 1.8b, `ExerciseCardFlow` (o card de exercício, `onAnswer`/`onAdvance`) exportado por Exercícios para o Nivelamento rodar a mesma sequência de reconhecimento com notifier próprio (aresta `Nivelamento --> Exercicios` no grafo). O mesmo barrel pode expor o seam de seleção de tipo (`practiceExerciseTypesProvider`) com que o E2E estreita o loop a um tipo — um provider de configuração, não o notifier de sessão.
 
 ### AD-2 — Dono único por dado persistente (single-writer)
 
@@ -113,6 +115,7 @@ graph TD
 ```mermaid
 graph LR
   Nivelamento --> Progressao
+  Nivelamento --> Exercicios
   Exercicios --> Progressao
   Exercicios --> Curriculo
   Exercicios --> Audio

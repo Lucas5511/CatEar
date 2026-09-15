@@ -185,7 +185,7 @@ conclusão observável (o `FakeAudioService` já modela isso; o real pode expor
 | # | Ação | Por quê agora | Custo | Dono |
 |---|---|---|---|---|
 | 1 | ~~Consertar `e2e-burn-in.yaml`~~ **feito** — falta mergear, disparar manual com 3 iterações e ler a tally | F1: um gate morto há 8 dias; sem isso não há número para tornar `e2e-android` obrigatório | 1 run | dev |
-| 2 | Extrair o notifier de `interval_exercise_screen.dart` e renomear (F4) — **decisão com Winston** | A 1.9 vai reusar o fluxo de prática; refatorar depois custa o dobro | 1 PR mecânico | Winston + dev |
+| 2 | ~~Extrair o notifier de `interval_exercise_screen.dart` e renomear (F4)~~ **feito** — Story 1.8b (`practice_controller.dart` / `exercise_card_flow.dart` / `practice_screen.dart`), spec + review em `spec-1-8b-costura-do-card-de-exercicio.md` | A 1.9 vai reusar o fluxo de prática; refatorar depois custa o dobro | 1 PR mecânico | Winston + dev |
 | 3 | `bmad-testarch-trace` para 1.4–1.8 (F2) | Fecha a lacuna de evidência antes de o épico fechar; não bloqueia a 1.9, pode rodar em paralelo | 1 sessão | Murat |
 | 4 | **Story 1.9** com ATDD (`bmad-testarch-atdd`) — o nivelamento tem 7 ACs com regras de borda (zero acertos, primeiro exercício fácil, nível persistido = v3 do schema) | É a story mais rica em regra de negócio que resta no épico | normal | dev |
 | 5 | R10 — `FlutterError.onError` + `PlatformDispatcher.onError` em `main()` com teste | Antes de fechar o épico: crash sem trilha em produção | 1 h | dev |

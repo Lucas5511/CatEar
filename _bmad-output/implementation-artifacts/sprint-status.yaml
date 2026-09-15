@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-01-2026 12:00
-last_updated: 09-15-2026 15:30
+last_updated: 09-15-2026 16:00
 project: CatEar
 project_key: NOKEY
 tracking_system: file-system
@@ -47,6 +47,7 @@ development_status:
   1-6-feedback-explicativo-em-erro: done
   1-7-estrutura-de-sessão-de-10-15-minutos: done
   1-8-geração-de-variações-anti-decoreba: done
+  1-8b-costura-do-card-de-exercicio: review
   1-9-nivelamento-por-reconhecimento: backlog
   1-10-tela-de-settings: backlog
   epic-1-retrospective: done

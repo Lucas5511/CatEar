@@ -25,7 +25,7 @@ class HomeScreen extends StatelessWidget {
               FilledButton(
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
-                    builder: (_) => const IntervalExerciseScreen(),
+                    builder: (_) => const PracticeScreen(),
                   ),
                 ),
                 child: const Text('Praticar'),
