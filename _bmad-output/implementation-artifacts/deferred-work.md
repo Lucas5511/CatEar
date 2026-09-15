@@ -480,6 +480,7 @@ recebem o número correspondente.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-6-feedback-explicativo-em-erro.md`
   summary: `_MascotBubble` é privado de `exercise_card_flow.dart`, mas o design pede o balão em quatro lugares — boas-vindas do nivelamento, feedback de erro, celebração de vitória e resumo de sessão.
   evidence: `DESIGN.md:102` e `EXPERIENCE.md:48` listam os quatro. Não existe camada de widgets compartilhados (`lib/core/` tem só `database/` e `theme/`). O custo já apareceu nesta story: `integration_test/catear_e2e_test.dart` identifica o balão por `fontFamily == 'Fredoka'` justamente porque a classe é inalcançável de fora. As Stories 1.7 e 1.9 vão duplicá-lo se nada mudar — decidir onde mora um widget compartilhado é decisão de arquitetura (Ask First).
+  ✅ **RESOLVIDO na Story 1.9 (2026-09-15):** `_MascotBubble` virou `MascotBubble` público em `lib/core/widgets/mascot_bubble.dart` (move puro, exportado por `core.dart`); `exercise_card_flow.dart` importa de `core` e o nivelamento o usa nas boas-vindas e no resumo. Decisão do humano na spec da 1.9.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-6-feedback-explicativo-em-erro.md`
   summary: `ErrorType.octaveError` existe na taxonomia mas nada o produz — nenhuma resposta errada pode resolver para ele hoje, então o app não sabe dizer "você acertou a nota, errou a oitava".
@@ -567,3 +568,43 @@ afirmava), a contagem por sessão redigida como total do dia ("hoje" →
   pending auto-advance' cobre só o replay **depois** de o timer existir.
   Correção provável: em `_pick`, após o `await`, `if (_motifInFlight) { _revealContinue(); return; }`
   antes de armar o timer. Dono natural: a próxima story que tocar em `ExerciseCardFlow`.
+
+## Deferred from: implementation of spec-1-9 (2026-09-15)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-9-nivelamento-por-reconhecimento.md`
+  summary: O nivelamento reusa `PracticeState` (exigido pelo `ExerciseCardFlow`) e, com isso, carrega campos que não significam nada para ele: `session` (um `PracticeSession` com UUID v4 cunhado só porque o tipo exige — nunca reportado), `endOffered` e `ending` (`SessionEnd.reachedEnd` setado no fim só para o `switch` da tela ter um estado terminal). O segundo consumidor confirmou o que a Regra de Três da 1.8b previa: o card precisa de `{loop, pool, index, options, phase, attempts, picked}`; o resto é sessão.
+  evidence: `lib/nivelamento/presentation/nivelamento_controller.dart` (`build`: `PracticeSession(startedAt: clock.now())` "minted because the card's state type carries one"; `_finish`: `ending: SessionEnd.reachedEnd`). Design Notes da spec 1.9 mandam registrar aqui, não abstrair agora.
+  owner: dev da 3.3 — separar um `CardState` (o que o card lê) de `PracticeState` (sessão) quando a 3.3 for o terceiro consumidor do card, ou decidir que o custo não vale.
+
+## Deferred from: step-04 review de spec-1-9 (2026-09-15, review_loop 0)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-9-nivelamento-por-reconhecimento.md`
+  summary: O retry automático do Riverpod 3 (`ProviderContainer.defaultRetry`: 10
+  tentativas, 200 ms → 6,4 s, ~38 s) mantém `practiceControllerProvider` e
+  `databaseProvider` em `AsyncLoading` antes de expor o erro — o usuário vê
+  spinner por ~38 s antes do `_RetryView` (catálogo falhou) ou da
+  `DatabaseErrorScreen` (abertura do banco lançou uma `Exception`).
+  evidence: `riverpod-3.4.2/lib/src/core/element.dart:766-796` (`triggerRetry`
+  devolve `AsyncLoading` enquanto `retrying`), `provider_container.dart:982`
+  (`defaultRetry` só desiste para `Error`/`ProviderException`). Os testes de
+  widget não enxergam porque `pumpAndSettle` atravessa os timers falsos. A
+  Story 1.9 desligou o retry nos **dois providers novos** (`@Riverpod(retry:
+  _noRetry)` em `nivelamentoControllerProvider` e `placementProvider`); os
+  pré-existentes (`PracticeController.build` → catálogo; `databaseProvider` →
+  `getApplicationSupportDirectory`/`sqlite`) ficam como estão até uma decisão:
+  desligar por provider, ou `ProviderScope(retry: ...)` em `main.dart` para o
+  app inteiro (muda o comportamento de todos os providers de uma vez — Ask
+  First). Dono natural: a próxima story que tocar em `PracticeScreen` ou em
+  `main.dart` (R10 do test-design, handler global de erro, é candidata).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-9-nivelamento-por-reconhecimento.md`
+  summary: `_RetryView` do `nivelamento_screen.dart` é cópia verbatim do de
+  `practice_screen.dart` (diff code-only = 0 linhas) — o mesmo problema
+  "widget em dois módulos" que a 1.9 resolveu para `MascotBubble` movendo-o
+  para `lib/core/widgets/`.
+  evidence: o bloco congelado da 1.9 proíbe mudar `PracticeScreen`, então a
+  cópia foi a única saída dentro da story. As duas cópias já divergem: a do
+  nivelamento ganhou `Semantics` + altura ≥ 48 dp no CTA (review da 1.9); a da
+  prática não tem. Correção: mover para `lib/core/widgets/retry_view.dart`
+  com a versão acessível e apontar as duas telas para ele. Dono natural: a
+  Story 1.10 (Settings) ou a próxima que tocar em `practice_screen.dart`.

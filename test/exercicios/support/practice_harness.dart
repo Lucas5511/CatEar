@@ -263,9 +263,8 @@ ErrorType scaleError(AnswerOption answer, AnswerOption picked) =>
     );
 
 /// The mascot's speech bubble (Story 1.6) — the only mascot surface on this
-/// screen, and the only Fredoka text on it.
-Finder mascotBubble() =>
-    find.byWidgetPredicate((w) => w.runtimeType.toString() == '_MascotBubble');
+/// screen, and the only Fredoka text on it. Public in `core/` since Story 1.9.
+Finder mascotBubble() => find.byType(MascotBubble);
 
 /// The sentence the bubble is showing.
 String bubbleText(WidgetTester tester) => tester

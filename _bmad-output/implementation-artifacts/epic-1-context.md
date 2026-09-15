@@ -17,6 +17,7 @@ Este épico entrega um app de treino de ouvido jogável, sem a parte de voz. Ao 
 - Story 1.6: Feedback explicativo em erro
 - Story 1.7: Estrutura de sessão de 10–15 minutos
 - Story 1.8: Geração de variações (anti-decoreba)
+- Story 1.8b: Costura do card de exercício (`ExerciseCardFlow`, pré-1.9)
 - Story 1.9: Nivelamento por reconhecimento
 - Story 1.10: Tela de Settings
 
@@ -34,7 +35,7 @@ Este épico entrega um app de treino de ouvido jogável, sem a parte de voz. Ao 
 ## Technical Decisions
 
 - **Stack fixa:** Flutter 3.47.x, Riverpod codegen 3.4.2, Drift 2.34.3, `just_audio` 0.10.6. `record` e lib de pitch só no Epic 3.
-- **Módulos por feature (AD-1):** `lib/{core, nivelamento, exercicios, progressao, audio, curriculo}`, cada um com `data/ domain/ presentation/` e um barrel público `{modulo}.dart`. `data/` e `presentation/` nunca importados de fora do módulo — comunicação só via `domain/` ou eventos. Lint `implementation_imports` (`custom_lint`/`import_lint`) no CI local desde o início, quebra o build se violada.
+- **Módulos por feature (AD-1):** `lib/{core, nivelamento, exercicios, progressao, audio, curriculo}`, cada um com `data/ domain/ presentation/` e um barrel público `{modulo}.dart`. `data/` e `presentation/` nunca importados de fora do módulo — comunicação só via `domain/` ou eventos. Lint `implementation_imports` (`custom_lint`/`import_lint`) no CI local desde o início, quebra o build se violada. **Exceção (AD-1, desde a 1.8b):** um módulo pode reexportar de `presentation/` via barrel `show` um widget que é *contrato de UI compartilhado* — dirigido por dados e callbacks, sem ler o notifier do módulo dono. É o caso de `ExerciseCardFlow` (`onAnswer(option, ms) → bool`, `onAdvance()`), exportado por Exercícios para o Nivelamento rodar a mesma sequência de reconhecimento com notifier próprio — aresta `Nivelamento --> Exercicios` no grafo. Obrigações do dono (doc da classe): key por exercício, manter `audioServiceProvider` vivo pela vida da rota (`listenManual`), `onAnswer` atualiza estado de forma síncrona, montar só com `state.index < state.loop.length`.
 - **Fluxo de estado (AD-5):** `UI → Riverpod Notifier → Repository (domain) → Drift DAO`; leitura reativa Drift stream → Repository → provider → UI. Nenhuma tela toca Drift direto. `core/` expõe só o `Database` e DAOs; interfaces de repositório e modelos de domínio puros no `domain/`; classes geradas pelo Drift nunca cruzam `data/ → domain/`.
 - **Migração Drift desde já:** `schemaVersion` explícito + `MigrationStrategy` com `onUpgrade` presente (pode ser vazio), para épicos seguintes adicionarem tabelas sem apagar o banco do usuário.
 - **Currículo é dado (AD-4 / AR-8):** asset `assets/curriculum/catalog_v1.json` com schema fixo — **contrato autoritativo no bloco `<frozen-after-approval>` da spec da Story 1.2**; `content-model.md` tem a taxonomia musical. Pontos que outros módulos consomem: `scaffoldIntensity` e `timbreScaffold` (`clean|vibrato`) são por-estágio e opcionais (ausente ≠ 0.0); `exerciseType` = `interval|chord|scale|resolution`; `requiresVoice` true sse `resolution`. `ExerciseType` e `ErrorType` definidos **só** no módulo Currículo; `errorTypes[]` do JSON == conjunto exato do enum `ErrorType`. `CurriculoRepository.load()` retorna modelos de domínio puros, não promete a origem (porta para OTA v2).
@@ -67,4 +68,5 @@ Este épico entrega um app de treino de ouvido jogável, sem a parte de voz. Ao 
 - 1.6 depende de 1.2 (taxonomia de `ErrorType`) e da microcopy dos pares de confusão do modelo de conteúdo.
 - 1.5 reusa o Exercise card e o fluxo de 1.4 — sem código específico por tipo, a diferença vem dos dados.
 - 1.8 cria a fatia mínima de `progressao/`; a Story 2.1 (Epic 2) estende esse módulo.
+- 1.9 depende de 1.8b: monta `ExerciseCardFlow` do barrel `exercicios.dart` com notifier próprio em `nivelamento/` — não copia o card nem vira "modo" do `PracticeController`.
 - Saídas para outros épicos: `SessionResultReported` e o nível de partida (1.9) alimentam o Epic 2; o app jogável de reconhecimento é pré-requisito dos Epics 2, 3 e 4.
