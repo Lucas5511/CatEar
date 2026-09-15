@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-01-2026 12:00
-last_updated: 09-09-2026 15:30
+last_updated: 09-15-2026 15:30
 project: CatEar
 project_key: NOKEY
 tracking_system: file-system
@@ -46,7 +46,7 @@ development_status:
   1-5-exercícios-de-reconhecimento-de-acordes-e-escalas: done
   1-6-feedback-explicativo-em-erro: done
   1-7-estrutura-de-sessão-de-10-15-minutos: done
-  1-8-geração-de-variações-anti-decoreba: review
+  1-8-geração-de-variações-anti-decoreba: done
   1-9-nivelamento-por-reconhecimento: backlog
   1-10-tela-de-settings: backlog
   epic-1-retrospective: done
@@ -97,7 +97,11 @@ action_items:
       (timeouts nos 3 jobs, cache de Gradle, snapshot de AVD em cache) — 7,7 min
       num run frio, contra 14 min antes. Falta: cobertura no CI, e o git diff
       --exit-code depois da regeneração de drift_schemas/ e contrast-audit.md.
-      Ler a taxa do burn-in após ~3 noites."
+      Ler a taxa do burn-in após ~3 noites.
+      Correção 2026-09-15 (quality review, F1): o burn-in nunca rodou — o
+      android-emulator-runner executa o script linha a linha e o case
+      multi-linha falhava antes do loop, 8 noites seguidas. Loop movido para
+      tool/e2e_burn_in.sh; primeira tally válida ainda por ler."
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-02.md"
   - id: "epic-1-retro-item-3-triar-deferred-work-md-tag-por-item-puxa"
     epic: 1
