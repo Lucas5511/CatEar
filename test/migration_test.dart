@@ -15,16 +15,17 @@ import 'generated/migrations/schema.dart';
 /// tables without wiping the user's local data. This suite is the guard that
 /// keeps that promise:
 ///
-///  * it verifies v1 is self-consistent today, and
+///  * it verifies every shipped version is self-consistent today, and
 ///  * it fails loudly the moment `schemaVersion` is bumped without a matching
-///    schema snapshot + verifier update — which is the trip-wire Story 1.8
-///    needs before it merges the first real table.
+///    schema snapshot + verifier update.
 ///
-/// When Story 1.8 adds a table:
+/// Story 1.8 cashed the promise in: `recent_variants` arrives at v2 through
+/// `onUpgrade`, and the 1 → 2 case below is the proof that an existing install
+/// keeps its data across the step. When a later story adds a table:
 ///   1. `dart run drift_dev schema dump lib/core/database/app_database.dart drift_schemas/`
 ///   2. `dart run drift_dev schema generate drift_schemas/ test/generated/migrations/`
-///   3. add a `migrateAndValidate(db, 2)` case below (with data-integrity checks
-///      via `verifier.schemaAt(1)` → insert rows → migrate → assert rows survive).
+///   3. add a `migrateAndValidate(db, N)` case below, with the same
+///      insert-at-N-1 → migrate → assert-rows-survive shape.
 void main() {
   late SchemaVerifier verifier;
 
@@ -76,18 +77,60 @@ void main() {
     await verifier.migrateAndValidate(db, 1);
   });
 
-  test(
-    'v1 schema has no tables (baseline — first table arrives in Story 1.8)',
-    () async {
-      final schema = await verifier.schemaAt(1);
-      final tables = schema.rawDatabase
-          .select(
-            "SELECT name FROM sqlite_schema WHERE type = 'table' "
-            "AND name NOT LIKE 'sqlite_%'",
-          )
-          .map((row) => row['name'] as String)
-          .toList();
-      expect(tables, isEmpty);
-    },
-  );
+  test('v1 schema has no tables (the baseline Story 1.1 shipped)', () async {
+    final schema = await verifier.schemaAt(1);
+    expect(_userTables(schema.rawDatabase), isEmpty);
+  });
+
+  test('migrating a v1 database to v2 creates recent_variants', () async {
+    final connection = await verifier.startAt(1);
+    final db = AppDatabase(connection.executor);
+    addTearDown(db.close);
+
+    await verifier.migrateAndValidate(db, 2);
+  });
+
+  test('rows written before the migration survive it', () async {
+    // The reason `onUpgrade` exists at all (AR: "later epics add tables without
+    // wiping the user's local data"). v1 has no table of its own to fill, so
+    // the check is done on a table the app does not own: if the migration ever
+    // becomes a `createAll()` on a wiped database — the shortcut that looks
+    // harmless while the schema is nearly empty — this row disappears.
+    final schema = await verifier.schemaAt(1);
+    schema.rawDatabase.execute(
+      'CREATE TABLE legacy_rows (id INTEGER PRIMARY KEY, note TEXT NOT NULL)',
+    );
+    schema.rawDatabase.execute(
+      "INSERT INTO legacy_rows (id, note) VALUES (1, 'written at v1')",
+    );
+
+    final db = AppDatabase(schema.newConnection());
+    addTearDown(db.close);
+    await db.customSelect('SELECT 1').get(); // forces the upgrade to run
+
+    final survivors = await db
+        .customSelect('SELECT note FROM legacy_rows')
+        .get();
+    expect(survivors.map((r) => r.data['note']), ['written at v1']);
+
+    // …and the new table is usable straight after the upgrade, not just
+    // present in `sqlite_schema`.
+    await db.recentVariantsDao.record(
+      relationKey: 'interval:M3:asc',
+      rootToken: 'sax_c4',
+      usedAt: DateTime.utc(2026, 9, 9),
+    );
+    expect(await db.recentVariantsDao.mostRecent(10), hasLength(1));
+  });
+
+  test('v2 schema holds exactly the recent_variants table', () async {
+    final schema = await verifier.schemaAt(2);
+    expect(_userTables(schema.rawDatabase), ['recent_variants']);
+  });
 }
+
+/// The non-internal tables of [database], sorted.
+List<String> _userTables(dynamic database) => (database.select(
+  "SELECT name FROM sqlite_schema WHERE type = 'table' "
+  "AND name NOT LIKE 'sqlite_%'",
+) as Iterable).map<String>((row) => row['name'] as String).toList()..sort();

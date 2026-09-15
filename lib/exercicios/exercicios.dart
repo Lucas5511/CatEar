@@ -1,9 +1,9 @@
 /// Public barrel for the `exercicios` module.
 ///
 /// Re-exports the pure `domain/` (the type-agnostic question/answer model, the
-/// fixed loop, option generation, the practice state, the `ExerciseAttempt`
-/// value, the mascot's error explanation, the session and its
-/// `SessionResultReported`) plus the single route screen from `presentation/`
+/// fixed loop, option generation, the anti-decoreba variation rules, the
+/// practice state, the `ExerciseAttempt` value, the mascot's error explanation,
+/// the session and its `SessionResultReported`) plus the single route screen from `presentation/`
 /// and the session-result seam from `data/`
 /// (Rule 1 of the module-boundary gate allows a barrel to re-export
 /// `presentation/` and `data/`). No other module imports
@@ -13,6 +13,7 @@ library;
 export 'domain/error_explanation.dart';
 export 'domain/exercise_attempt.dart';
 export 'domain/exercise_question.dart';
+export 'domain/exercise_variation.dart';
 export 'domain/interval_options.dart';
 export 'domain/interval_practice.dart';
 export 'domain/motif.dart';

@@ -31,6 +31,7 @@ import 'dart:developer' as developer;
 import 'package:catear/audio/audio.dart';
 import 'package:catear/core/core.dart';
 import 'package:catear/curriculo/curriculo.dart';
+import 'package:catear/progressao/progressao.dart';
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -39,6 +40,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../domain/error_explanation.dart';
 import '../domain/exercise_attempt.dart';
 import '../domain/exercise_question.dart';
+import '../domain/exercise_variation.dart';
 import '../domain/interval_options.dart';
 import '../domain/interval_practice.dart';
 import '../data/session_result_reporter.dart';
@@ -109,14 +111,27 @@ class IntervalPractice extends _$IntervalPractice {
 
   late PracticeTimings _timings;
 
+  /// The Progressão module's history of recent variations — the only piece of
+  /// persisted state this screen touches, and it touches it through that
+  /// module's port (AD-2), never through Drift.
+  late VariantHistoryRepository _variantHistory;
+
   @override
   Future<PracticeState> build() async {
     _reported = false;
     _timings = ref.watch(practiceTimingsProvider);
     final types = ref.watch(practiceExerciseTypesProvider);
+    _variantHistory = ref.watch(variantHistoryRepositoryProvider);
     final curriculum = await ref.watch(curriculoRepositoryProvider).load();
-    final loop = practiceLoop(curriculum, types: types);
+    final variantHistory = await _variantHistorySnapshot();
+    final loop = practiceLoop(
+      curriculum,
+      types: types,
+      history: variantHistory.window,
+      lastUses: variantHistory.lastUses,
+    );
     final pool = practicePool(curriculum, types: types);
+    if (loop.isNotEmpty) _recordVariant(loop.first);
     return PracticeState(
       // A new session per build: opening the screen twice mints two ids, and
       // so does a retry after a catalog failure (no attempts existed yet).
@@ -127,6 +142,63 @@ class IntervalPractice extends _$IntervalPractice {
       options: loop.isEmpty ? const [] : _optionsFor(loop, pool, 0),
       phase: loop.isEmpty ? AnswerPhase.finished : AnswerPhase.answering,
       attempts: const [],
+    );
+  }
+
+  /// The two halves of the history the loop needs — the window of roots that
+  /// may not play, and how long ago each root last played — or two empty lists
+  /// if they cannot be read.
+  ///
+  /// Anti-decoreba is a *preference*: with no history every position falls back
+  /// to the root the catalog writes, which is exactly what the app played
+  /// before Story 1.8. A database that will not open must cost the learner a
+  /// less varied session, never the session itself.
+  Future<({List<VariantUse> window, List<VariantUse> lastUses})>
+  _variantHistorySnapshot() async {
+    try {
+      // Both or neither: a window without the recency ordering would degrade
+      // silently into the two-root alternation instead of failing visibly.
+      final (window, lastUses) = await (
+        _variantHistory.recent(limit: variantWindow),
+        _variantHistory.lastUsePerRoot(),
+      ).wait;
+      return (window: window, lastUses: lastUses);
+    } catch (error, stack) {
+      developer.log(
+        'variation history unavailable — practising without it',
+        name: 'catear.exercicios.variation',
+        error: error,
+        stackTrace: stack,
+      );
+      return (window: const <VariantUse>[], lastUses: const <VariantUse>[]);
+    }
+  }
+
+  /// Appends [question]'s variation to the history, without waiting for it.
+  ///
+  /// Called once per exercise **as it is presented**, which is what makes the
+  /// window count exercises rather than sessions: someone who practises twice
+  /// in a day advances it twice, and someone who leaves after two exercises
+  /// advances it by two. Fire-and-forget because a database round-trip has no
+  /// business sitting between the learner and the next card; the repository
+  /// serialises the writes so they still land in order.
+  void _recordVariant(ExerciseQuestion question) {
+    final variant = question.variant;
+    if (variant == null) return; // an invariant exercise — a chord.
+    unawaited(
+      _variantHistory
+          .record(
+            relationKey: variant.relationKey,
+            rootToken: variant.rootToken,
+          )
+          .catchError((Object error, StackTrace stack) {
+            developer.log(
+              'could not record $variant',
+              name: 'catear.exercicios.variation',
+              error: error,
+              stackTrace: stack,
+            );
+          }),
     );
   }
 
@@ -193,11 +265,15 @@ class IntervalPractice extends _$IntervalPractice {
       picked: null,
     );
     if (_shouldOfferEnd(s)) {
+      // Not recorded here: the learner may take the offer and never hear this
+      // exercise, and a variation nobody heard must not be burned out of next
+      // session's pool. `declineEndOffer` records it if they carry on.
       state = AsyncData(
         moved.copyWith(phase: AnswerPhase.offeringEnd, endOffered: true),
       );
       return;
     }
+    _recordVariant(s.loop[next]);
     state = AsyncData(moved.copyWith(phase: AnswerPhase.answering));
   }
 
@@ -219,6 +295,8 @@ class IntervalPractice extends _$IntervalPractice {
   void declineEndOffer() {
     final s = state.value;
     if (s == null || s.phase != AnswerPhase.offeringEnd) return;
+    // The card the offer held back is presented now, so now it is history.
+    _recordVariant(s.current);
     state = AsyncData(s.copyWith(phase: AnswerPhase.answering));
   }
 

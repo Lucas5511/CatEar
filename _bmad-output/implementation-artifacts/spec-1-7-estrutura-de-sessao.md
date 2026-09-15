@@ -2,7 +2,7 @@
 title: 'Story 1.7 — Estrutura de sessão de 10–15 minutos'
 type: 'feature'
 created: '2026-09-08'
-status: 'review'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 context:
