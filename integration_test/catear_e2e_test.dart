@@ -393,8 +393,10 @@ void main() {
       // database, none of them faked. The widget suite stubs the repository,
       // so a broken table, a broken migration or a broken provider wiring
       // would only ever show up here.
+      // The shell is offstage behind the pushed exercise route, so the
+      // container has to be read from the screen that is actually on top.
       final container = ProviderScope.containerOf(
-        tester.element(find.byType(HomeShell)),
+        tester.element(find.byType(IntervalExerciseScreen)),
       );
       final recorded = await container
           .read(variantHistoryRepositoryProvider)
