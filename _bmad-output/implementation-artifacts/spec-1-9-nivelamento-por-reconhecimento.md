@@ -120,6 +120,8 @@ context:
 - **`dart run tool/ci.sh`** na seção Verification é um typo do spec: é shell script — `bash tool/ci.sh`.
 - **`PracticeState` reusado** como a spec manda; o incômodo (`session` cunhado só porque o tipo exige, `ending` setado para o `switch` ter estado terminal) foi registrado no `deferred-work.md` com `owner: dev da 3.3`, como as Design Notes pedem.
 
+- **Primeira execução on-device (PR #34, run 35029303484):** a jornada nova passou, mas o job travou 40 min depois até o timeout de 45 min. Causa: `tester.binding.handlePopRoute()` na `HomeShell` em rota raiz — `PopScope` deixa passar no índice 0, o `Navigator` não tem o que desempilhar e o Flutter cai em `SystemNavigator.pop()`, que dá `finish()` na Activity; os plugins desanexam e o `AudioPlayer()` do grupo seguinte espera um method channel morto para sempre. O teste terminou verde porque a árvore de widgets continua viva. Corrigido no E2E: a asserção "back não volta ao nivelamento" virou `Navigator.canPop() == false` na `HomeShell` (não há rota abaixo). Lição para o `deferred-work`/harness: nunca disparar `handlePopRoute` numa rota raiz em `integration_test`.
+
 ## Spec Change Log
 
 ## Review Triage Log

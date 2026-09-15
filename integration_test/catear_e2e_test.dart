@@ -606,11 +606,21 @@ void main() {
         expect(find.text('Que bom ter você no CatEar!'), findsOneWidget);
         expect(navBar(tester).selectedIndex, 0);
 
-        // Back does not return to the levelling.
-        await tester.binding.handlePopRoute();
-        await tester.pumpAndSettle();
+        // Back does not return to the levelling: the gate swapped it out in
+        // place, so there is no route beneath the shell to pop to. Asserted
+        // on the Navigator rather than by firing a back event — on the root
+        // route, with nothing to pop, `handlePopRoute` falls through to
+        // `SystemNavigator.pop()`, which finishes the Android activity, and
+        // every later platform-channel call in this run (the real
+        // `AudioPlayer` of the next group) then hangs until the job's
+        // timeout. The two `handlePopRoute` calls above run on a deep tab or
+        // a pushed route, where something is there to consume the event.
         expect(find.byType(NivelamentoScreen), findsNothing);
-        expect(find.byType(HomeShell), findsOneWidget);
+        expect(
+          Navigator.of(tester.element(find.byType(HomeShell))).canPop(),
+          isFalse,
+          reason: 'nothing beneath the shell — the levelling was not pushed',
+        );
 
         // Second boot over the same database: straight to Home.
         await pumpApp(tester, database: db);
