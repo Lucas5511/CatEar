@@ -1,0 +1,1181 @@
+// The practice screen, one card at a time: rendering, accessibility, audio,
+// the three exercise types through the same tree, the mascot bubble and the
+// injected timings. Every test drives the real `PracticeScreen`; the session
+// around the cards is `practice_session_test.dart`. Split out of
+// `interval_exercise_screen_test.dart` in Story 1.8b with only renames.
+
+import 'package:catear/audio/audio.dart';
+import 'package:catear/audio/testing.dart';
+import 'package:catear/core/core.dart';
+import 'package:catear/curriculo/curriculo.dart';
+import 'package:catear/curriculo/data/catalog_asset_bundle.dart';
+import 'package:catear/exercicios/exercicios.dart';
+import 'package:catear/exercicios/presentation/exercise_card.dart';
+import 'package:catear/exercicios/presentation/phrase_player.dart';
+import 'package:catear/exercicios/presentation/practice_controller.dart';
+import 'package:catear/progressao/progressao.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'support/practice_harness.dart';
+
+void main() {
+  testWidgets(
+    'renders one raised Exercise card (surface-raised / rounded md)',
+    (tester) async {
+      final container = practiceContainer();
+      addTearDown(container.dispose);
+      await tester.pumpWidget(practiceApp(container));
+      await settleFirstMotif(tester, container);
+
+      expect(find.byType(ExerciseCard), findsOneWidget);
+      final box = tester.widget<Container>(
+        find
+            .descendant(
+              of: find.byType(ExerciseCard),
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+      final decoration = box.decoration! as BoxDecoration;
+      expect(decoration.color, CatColors.surfaceRaised);
+      expect(decoration.borderRadius, BorderRadius.circular(CatRadii.md));
+    },
+  );
+
+  testWidgets('options are >= 48dp targets with a button role + name label', (
+    tester,
+  ) async {
+    final container = practiceContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    final answer = stateOf(container).answer;
+    final handle = tester.ensureSemantics();
+
+    for (final option in stateOf(container).options) {
+      final size = tester.getSize(
+        find
+            .ancestor(
+              of: find.text(option.nameUi),
+              matching: find.byType(FilledButton),
+            )
+            .first,
+      );
+      expect(size.height, greaterThanOrEqualTo(48.0));
+      expect(find.bySemanticsLabel(option.nameUi), findsOneWidget);
+    }
+    expect(find.bySemanticsLabel('Ouvir de novo'), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text(answer.nameUi));
+    await tester.pump();
+    expect(find.textContaining('Isso!'), findsOneWidget);
+    handle.dispose();
+  });
+
+  testWidgets('options do not overflow at TextScaler.linear(2.2)', (
+    tester,
+  ) async {
+    final errors = <FlutterErrorDetails>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = errors.add;
+    addTearDown(() => FlutterError.onError = previous);
+
+    final container = practiceContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(scaledApp(container));
+    await settleFirstMotif(tester, container);
+
+    // Answer to lay out the result line + "Continuar" too.
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text(stateOf(container).answer.nameUi));
+    await tester.pump();
+
+    final overflow = errors
+        .where((e) => e.exceptionAsString().contains('overflowed'))
+        .toList();
+    expect(overflow, isEmpty, reason: overflow.map((e) => '$e').join('\n'));
+  });
+
+  testWidgets('the mascot bubble does not overflow at TextScaler.linear(2.2)', (
+    tester,
+  ) async {
+    // The wrong branch is the one text scaling hits hardest — the bubble is
+    // the largest text surface on the screen, and the correct-answer gate
+    // above never lays it out. Its own test rather than a second `pumpWidget`
+    // in that one: unmounting a scope leaves an unflushed auto-dispose timer.
+    final errors = <FlutterErrorDetails>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = errors.add;
+    addTearDown(() => FlutterError.onError = previous);
+
+    final container = practiceContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(scaledApp(container));
+    await settleFirstMotif(tester, container);
+
+    final s = stateOf(container);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(
+      find.text(s.options.firstWhere((o) => o.id != s.answer.id).nameUi),
+    );
+    await tester.pump();
+    await tester.pumpAndSettle(); // the screen reveals "Continuar"
+
+    expect(mascotBubble(), findsOneWidget);
+    final overflow = errors
+        .where((e) => e.exceptionAsString().contains('overflowed'))
+        .toList();
+    expect(overflow, isEmpty, reason: overflow.map((e) => '$e').join('\n'));
+  });
+
+  testWidgets('dark theme: full correct flow works without exceptions', (
+    tester,
+  ) async {
+    final container = practiceContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      practiceApp(container, brightness: Brightness.dark),
+    );
+    await settleFirstMotif(tester, container);
+
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.tap(find.text(stateOf(container).answer.nameUi));
+    await tester.pump();
+    expect(find.textContaining('Isso!'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 2));
+    expect(stateOf(container).index, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('plays the interval as a motif, replay is unlimited', (
+    tester,
+  ) async {
+    final fake = FakeAudioService();
+    final container = practiceContainer(audio: fake);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    // First exercise is P1 (sax_c4, sax_c4) -> motif of 3 events, never 2.
+    expect(fake.playedRefs.length, 3);
+
+    for (var i = 0; i < 5; i++) {
+      await tester.tap(find.text('Ouvir de novo'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 3));
+    }
+    expect(fake.playedRefs.length, 3 + 5 * 3, reason: 'no replay limit');
+  });
+
+  testWidgets('reaction time counts from the first playback; replays do not '
+      'reset it', (tester) async {
+    final container = practiceContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container); // _enabledAt == the motif length
+
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Ouvir de novo'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 3)); // replay plays through
+    await tester.pump(const Duration(milliseconds: 200));
+
+    await tester.tap(find.text(stateOf(container).answer.nameUi));
+    await tester.pump();
+
+    final rt = stateOf(container).attempts.single.reactionTimeMs;
+    expect(
+      rt,
+      closeTo(300 + 3000 + 200, 80),
+      reason: 'RT reflects the original enable instant, not the last replay',
+    );
+  });
+
+  testWidgets('correct answer: positive highlight + flourish, no mascot, '
+      'advances', (tester) async {
+    final fake = FakeAudioService();
+    final container = practiceContainer(audio: fake);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    final answer = stateOf(container).answer; // P1 -> "uníssono justo"
+    final playedBefore = fake.playedRefs.length;
+
+    await tester.pump(const Duration(milliseconds: 1100)); // reaction time
+    await tester.tap(find.text(answer.nameUi));
+    await tester.pump();
+
+    final attempt = stateOf(container).attempts.single;
+    expect(attempt.wasCorrect, isTrue);
+    expect(attempt.errorType, isNull);
+    expect(attempt.exerciseType, ExerciseType.interval);
+    expect(attempt.reactionTimeMs, closeTo(1100, 60));
+
+    // Flourish reuses sax_c4 -> sax_e4 -> sax_g4.
+    await tester.pump(const Duration(seconds: 1));
+    expect(
+      fake.playedRefs.sublist(playedBefore),
+      containsAllInOrder(<String>['sax_c4', 'sax_e4', 'sax_g4']),
+    );
+
+    // No mascot (no Fredoka text anywhere): EXPERIENCE.md keeps a right answer
+    // visual + sonic so the session's rhythm is not interrupted.
+    expect(fredoka(), findsNothing);
+    expect(mascotBubble(), findsNothing);
+
+    // The correct option is highlighted in the positive token, no red on screen.
+    final optionButton = tester.widget<FilledButton>(
+      find
+          .ancestor(
+            of: find.text(answer.nameUi),
+            matching: find.byType(FilledButton),
+          )
+          .first,
+    );
+    expect(
+      optionButton.style?.backgroundColor?.resolve({}),
+      CatColors.scaffoldConsonant,
+    );
+
+    // Advances to the next exercise (celebration timer).
+    await tester.pump(const Duration(seconds: 2));
+    expect(stateOf(container).index, 1);
+  });
+
+  testWidgets('correct answer: a second synchronous tap does not double-answer '
+      'or double-advance', (tester) async {
+    final container = practiceContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    final answer = stateOf(container).answer;
+    await tester.pump(const Duration(milliseconds: 500));
+    // Two taps before any rebuild.
+    await tester.tap(find.text(answer.nameUi), warnIfMissed: false);
+    await tester.tap(find.text(answer.nameUi), warnIfMissed: false);
+    await tester.pump();
+
+    expect(stateOf(container).attempts, hasLength(1));
+
+    await tester.pump(const Duration(seconds: 3));
+    expect(stateOf(container).index, 1, reason: 'advanced exactly once');
+  });
+
+  testWidgets('advancing mounts a fresh card: the second exercise plays its '
+      'own motif and can be answered', (tester) async {
+    // The owner-side half of the card contract: `PracticeScreen` keys the card
+    // by `state.index`. Without that key the same `State` would survive the
+    // advance — `_picked` still set, no motif, options dead — and the learner
+    // would be stuck on the second card with nothing to tap.
+    final fake = FakeAudioService();
+    final container = practiceContainer(audio: fake);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    final playedBeforeTap = fake.playedRefs.length;
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text(stateOf(container).answer.nameUi));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2)); // flourish + auto-advance
+    expect(stateOf(container).index, 1);
+
+    await settleFirstMotif(tester, container);
+    final secondMotif = stateOf(container).current.motif
+        .map((e) => e.ref)
+        .toList();
+    expect(
+      fake.playedRefs.length,
+      playedBeforeTap + PhrasePlayer.flourishRefs.length + secondMotif.length,
+      reason: 'exactly the flourish, then the second card\'s whole motif',
+    );
+    expect(
+      fake.playedRefs.sublist(fake.playedRefs.length - secondMotif.length),
+      secondMotif,
+      reason: 'the second card mounted fresh and played its own exercise',
+    );
+
+    await tester.tap(find.text(stateOf(container).answer.nameUi));
+    await tester.pump();
+    expect(stateOf(container).attempts, hasLength(2));
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('wrong answer: gentle state, reveals correct, logs the '
+      'ErrorType, no saturated red, mascot explains the confusion', (
+    tester,
+  ) async {
+    final container = practiceContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    final s = stateOf(container);
+    final answer = s.answer;
+    final wrong = s.options.firstWhere((o) => o.id != answer.id);
+
+    await tester.pump(const Duration(milliseconds: 800));
+    await tester.tap(find.text(wrong.nameUi));
+    await tester.pump();
+
+    final attempt = stateOf(container).attempts.single;
+    expect(attempt.wasCorrect, isFalse);
+    expect(
+      attempt.errorType,
+      ExerciseAttempt.errorTypeFor(
+        exerciseType: ExerciseType.interval,
+        answer: answer,
+        picked: wrong,
+      ),
+    );
+    expect(attempt.reactionTimeMs, closeTo(800, 60));
+
+    // FR-4: the mascot names the confused pair, never a bare "errado".
+    expect(mascotBubble(), findsOneWidget);
+    final message = bubbleText(tester);
+    expect(message, contains(answer.nameUi));
+    expect(message, contains(wrong.nameUi));
+    expect(
+      message,
+      errorExplanation(
+        answer: answer,
+        picked: wrong,
+        errorType: attempt.errorType,
+      ),
+      reason: 'the sentence is built in domain/, not in the widget',
+    );
+    expect(find.textContaining(answer.nameUi), findsWidgets);
+    expect(find.text('Continuar'), findsOneWidget);
+
+    final wrongButton = tester.widget<FilledButton>(
+      find
+          .ancestor(
+            of: find.text(wrong.nameUi),
+            matching: find.byType(FilledButton),
+          )
+          .first,
+    );
+    final bg = wrongButton.style?.backgroundColor?.resolve({});
+    expect(bg, isNot(CatColors.scaffoldDissonant));
+    expect(bg, CatColors.surfaceBase);
+
+    // No `ensureVisible` here on purpose: the screen scrolls "Continuar" into
+    // view itself after a wrong answer, and a tap that misses the viewport
+    // does not dispatch — so this tap is the placement guard.
+    await tester.pumpAndSettle(); // the screen reveals "Continuar"
+    await tester.tap(find.text('Continuar'));
+    await tester.pump();
+    expect(stateOf(container).index, 1);
+  });
+
+  testWidgets('a replay that fails after answering keeps the result + '
+      '"Continuar"', (tester) async {
+    final fake = FakeAudioService();
+    final container = practiceContainer(audio: fake);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    final s = stateOf(container);
+    final wrong = s.options.firstWhere((o) => o.id != s.answer.id);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text(wrong.nameUi));
+    await tester.pump();
+    expect(find.text('Continuar'), findsOneWidget);
+
+    // Now make the replay fail. The card has scrolled down to reveal
+    // "Continuar", so scroll back up the way a learner asking for another
+    // listen would — the replay button is above the bubble on this card.
+    fake.unplayableRefs.add(s.current.audioSampleRefs.first);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Ouvir de novo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ouvir de novo'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+
+    expect(find.textContaining('O som não tocou'), findsOneWidget);
+    expect(mascotBubble(), findsOneWidget);
+    expect(find.text('Continuar'), findsOneWidget);
+
+    await tester.pumpAndSettle(); // the screen reveals "Continuar"
+    await tester.tap(find.text('Continuar'));
+    await tester.pump();
+    expect(stateOf(container).index, 1);
+  });
+
+  testWidgets('end of loop: a "Voltar" button pops back, no mascot', (
+    tester,
+  ) async {
+    final container = practiceContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: appTheme(Brightness.light),
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const PracticeScreen(),
+                  ),
+                ),
+                child: const Text('go'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('go'));
+    await tester.pumpAndSettle();
+    await settleFirstMotif(tester, container);
+
+    final notifier = container.read(practiceControllerProvider.notifier);
+    final total = stateOf(container).loop.length;
+    for (var i = 0; i < total; i++) {
+      notifier.answer(stateOf(container).answer, 100);
+      notifier.advance();
+    }
+    await tester.pump();
+
+    expect(find.text('Voltar'), findsOneWidget);
+    expect(fredoka(), findsNothing);
+    await tester.tap(find.text('Voltar'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PracticeScreen), findsNothing);
+    expect(find.text('go'), findsOneWidget);
+  });
+
+  testWidgets('a missing catalog asset shows the "temporary" retry state', (
+    tester,
+  ) async {
+    final container = practiceContainer(
+      catalogError: const CurriculumError.assetNotFound('x'),
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Tentar de novo'), findsOneWidget);
+    expect(find.textContaining('Não consegui carregar'), findsOneWidget);
+    expect(find.textContaining('temporário'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a malformed catalog is not shown as "temporary"', (
+    tester,
+  ) async {
+    final container = practiceContainer(
+      catalogError: const CurriculumError.malformedCatalog(
+        'stages',
+        'not a list',
+      ),
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Algo deu errado'), findsOneWidget);
+    expect(find.textContaining('temporário'), findsNothing);
+  });
+
+  testWidgets('an unexpected build error shows a plain error state, not '
+      '"temporary"', (tester) async {
+    final container = practiceContainer(catalogError: ArgumentError('boom'));
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Algo deu errado'), findsOneWidget);
+    expect(find.textContaining('temporário'), findsNothing);
+    expect(find.text('Tentar de novo'), findsOneWidget);
+  });
+
+  testWidgets('audio playback failure: additive banner + replay recovers', (
+    tester,
+  ) async {
+    final fake = FakeAudioService(unplayableRefs: {'sax_c4'});
+    final container = practiceContainer(audio: fake);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    expect(find.textContaining('O som não tocou'), findsOneWidget);
+    expect(find.text('Ouvir de novo'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    // Options stay on the card (the banner is additive, not a takeover).
+    expect(find.text(stateOf(container).answer.nameUi), findsOneWidget);
+
+    fake.unplayableRefs.remove('sax_c4');
+    await tester.tap(find.text('Ouvir de novo'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+    expect(find.textContaining('O som não tocou'), findsNothing);
+  });
+
+  testWidgets(
+    'keeps the auto-dispose audio service alive while the screen is mounted',
+    (tester) async {
+      final fake = FakeAudioService();
+      final container = ProviderContainer(
+        overrides: [
+          // `overrideWith` (not `overrideWithValue`) keeps the provider
+          // auto-dispose, so a screen that only `ref.read`s it would let the
+          // real service be torn down before the first motif.
+          audioServiceProvider.overrideWith((ref) {
+            ref.onDispose(fake.dispose);
+            return fake;
+          }),
+          catalogAssetBundleProvider.overrideWithValue(RealCatalogBundle()),
+          variantHistoryRepositoryProvider.overrideWithValue(
+            FakeVariantHistory(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      await tester.pumpWidget(practiceApp(container));
+      await settleFirstMotif(tester, container);
+
+      expect(
+        fake.disposeCount,
+        0,
+        reason: 'the screen must hold a listener on audioServiceProvider',
+      );
+      expect(
+        fake.playedRefs,
+        isNotEmpty,
+        reason: 'the first motif must actually play',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('and releases it exactly once when the screen goes away', (
+    tester,
+  ) async {
+    // The other half of the lifetime contract. Holding the provider open for
+    // the screen is only correct if letting go is too: a subscription that
+    // outlives the screen would keep a real `AudioPlayer` — and its platform
+    // resources — alive behind an exercise nobody is looking at.
+    final fake = FakeAudioService();
+    final container = ProviderContainer(
+      overrides: [
+        audioServiceProvider.overrideWith((ref) {
+          ref.onDispose(fake.dispose);
+          return fake;
+        }),
+        catalogAssetBundleProvider.overrideWithValue(RealCatalogBundle()),
+        variantHistoryRepositoryProvider.overrideWithValue(
+          FakeVariantHistory(),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+    expect(fake.disposeCount, 0);
+
+    await tester.pumpWidget(
+      practiceApp(container, home: const SizedBox.shrink()),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      fake.disposeCount,
+      1,
+      reason: 'held open for the screen, released with it — not leaked',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'a non-AudioError from playback surfaces the banner, not a raw crash',
+    (tester) async {
+      final container = ProviderContainer(
+        overrides: [
+          audioServiceProvider.overrideWithValue(ThrowingAudioService()),
+          catalogAssetBundleProvider.overrideWithValue(RealCatalogBundle()),
+          variantHistoryRepositoryProvider.overrideWithValue(
+            FakeVariantHistory(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      await tester.pumpWidget(practiceApp(container));
+      await settleFirstMotif(tester, container);
+
+      expect(find.textContaining('O som não tocou'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a card whose audio keeps failing still lets the learner answer',
+    (tester) async {
+      final fake = FakeAudioService();
+      final container = practiceContainer(audio: fake);
+      addTearDown(container.dispose);
+      await tester.pumpWidget(practiceApp(container));
+      await tester.pump();
+      await tester.pump();
+      fake.unplayableRefs.add(stateOf(container).current.audioSampleRefs.first);
+      await settleFirstMotif(tester, container);
+
+      expect(find.textContaining('O som não tocou'), findsOneWidget);
+
+      // The options are usable despite the audio failure — the learner is not
+      // stranded with only the back button.
+      await tester.tap(find.text(stateOf(container).answer.nameUi).last);
+      await tester.pump();
+      expect(stateOf(container).attempts, hasLength(1));
+    },
+  );
+
+  testWidgets(
+    'replaying after a correct answer cancels the pending auto-advance',
+    (tester) async {
+      final container = practiceContainer();
+      addTearDown(container.dispose);
+      await tester.pumpWidget(practiceApp(container));
+      await settleFirstMotif(tester, container);
+      final index0 = stateOf(container).index;
+
+      await tester.tap(find.text(stateOf(container).answer.nameUi).last);
+      await tester.pump(); // answer recorded, flourish begins
+      await tester.pump(const Duration(milliseconds: 600)); // flourish done
+
+      await tester.tap(find.text('Ouvir de novo'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 900)); // past old 700ms
+
+      expect(
+        stateOf(container).index,
+        index0,
+        reason: 'the replay cancelled the auto-advance',
+      );
+      expect(find.text('Continuar'), findsOneWidget);
+
+      await tester.tap(find.text('Continuar'));
+      await tester.pump();
+      await settleFirstMotif(tester, container);
+      expect(stateOf(container).index, index0 + 1);
+    },
+  );
+
+  testWidgets('answering stops a replay motif still in flight', (tester) async {
+    final fake = FakeAudioService(
+      playLatency: const Duration(milliseconds: 250),
+    );
+    final container = practiceContainer(audio: fake);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    await tester.tap(find.text('Ouvir de novo'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100)); // motif mid-note
+    final stopsBefore = fake.stopCount;
+
+    final wrong = stateOf(container).options
+        .firstWhere((o) => o.id != stateOf(container).answer.id);
+    await tester.tap(find.text(wrong.nameUi).last);
+    await tester.pump();
+
+    expect(
+      fake.stopCount,
+      greaterThan(stopsBefore),
+      reason: 'the in-flight motif is cut when the answer lands',
+    );
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  // ---------------------------------------------------------------------
+  // AC3 — chord and scale render through the same tree as interval.
+  // ---------------------------------------------------------------------
+
+  testWidgets('an interval exercise renders through ExerciseCardFlow', (
+    tester,
+  ) async {
+    final container = practiceContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    expect(activeView(), findsOneWidget);
+    expect(find.text('Que intervalo é este?'), findsOneWidget);
+    expect(stateOf(container).current.type, ExerciseType.interval);
+  });
+
+  testWidgets('a ChordExercise renders through the same widget tree', (
+    tester,
+  ) async {
+    final fake = FakeAudioService();
+    final container = practiceContainer(
+      audio: fake,
+      types: const {ExerciseType.chord},
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    // Same card, same private view, same replay affordance — nothing per type.
+    expect(activeView(), findsOneWidget);
+    expect(find.byType(ExerciseCard), findsOneWidget);
+    expect(find.text('Ouvir de novo'), findsOneWidget);
+    expect(find.text('Que acorde é este?'), findsOneWidget);
+    expect(find.text('Que intervalo é este?'), findsNothing);
+
+    final s = stateOf(container);
+    expect(s.current.type, ExerciseType.chord);
+    // Options come from chordCatalog, and every one is on screen.
+    expect(
+      s.options.map((o) => o.id).toSet(),
+      isNot(contains('M3')),
+      reason: 'a chord card must not offer interval options',
+    );
+    for (final option in s.options) {
+      expect(find.text(option.nameUi), findsOneWidget);
+    }
+    expect(fake.playedRefs, isNotEmpty);
+
+    await tester.pump(const Duration(milliseconds: 600));
+    final wrong = s.options.firstWhere((o) => o.id != s.answer.id);
+    await tester.tap(find.text(wrong.nameUi));
+    await tester.pump();
+
+    final attempt = stateOf(container).attempts.single;
+    expect(attempt.exerciseType, ExerciseType.chord);
+    expect(attempt.errorType, isIn(chordErrorTypes.toList()));
+    expect(mascotBubble(), findsOneWidget);
+    expect(bubbleText(tester), contains(s.answer.nameUi));
+    expect(find.text('Continuar'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a ScaleExercise renders through the same widget tree', (
+    tester,
+  ) async {
+    final container = practiceContainer(types: const {ExerciseType.scale});
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    expect(activeView(), findsOneWidget);
+    expect(find.byType(ExerciseCard), findsOneWidget);
+    expect(find.text('Que escala é esta?'), findsOneWidget);
+
+    final s = stateOf(container);
+    expect(s.current.type, ExerciseType.scale);
+    expect(
+      s.options.map((o) => o.id).toSet(),
+      everyElement(
+        isIn(const ['major', 'natural_minor', 'dorian', 'mixolydian']),
+      ),
+      reason: 'options come from scaleCatalog',
+    );
+    for (final option in s.options) {
+      expect(find.text(option.nameUi), findsOneWidget);
+    }
+
+    await tester.pump(const Duration(milliseconds: 600));
+    final wrong = s.options.firstWhere((o) => o.id != s.answer.id);
+    await tester.tap(find.text(wrong.nameUi));
+    await tester.pump();
+
+    final attempt = stateOf(container).attempts.single;
+    expect(attempt.exerciseType, ExerciseType.scale);
+    // The `major` id exists in BOTH catalogs; a scale mistake is never filed
+    // as a chord-quality one.
+    expect(attempt.errorType, isNotNull);
+    expect(chordErrorTypes, isNot(contains(attempt.errorType)));
+    expect(intervalErrorTypes, isNot(contains(attempt.errorType)));
+    expect(find.text('Continuar'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  // ---- Story 1.6: the mascot's explanation on a wrong answer ----
+
+  testWidgets('the bubble is a bubble: accent-soft, rounded/lg, warm shadow, '
+      'Fredoka, announced as a live region', (tester) async {
+    final container = practiceContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    final s = stateOf(container);
+    final wrong = s.options.firstWhere((o) => o.id != s.answer.id);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text(wrong.nameUi));
+    await tester.pump();
+
+    expect(mascotBubble(), findsOneWidget);
+
+    final box = bubbleBox(tester);
+    expect(box.color, CatColors.accentSoft);
+    expect(
+      box.borderRadius,
+      BorderRadius.circular(CatRadii.lg),
+      reason: 'rounded/lg is reserved for the mascot bubble (UX-DR4)',
+    );
+    expect(box.boxShadow, isNotEmpty, reason: 'floats above the card');
+
+    // The single Fredoka style in the app, and nothing else uses it.
+    final text = tester.widget<Text>(
+      find.descendant(of: mascotBubble(), matching: find.byType(Text)),
+    );
+    expect(text.style?.fontFamily, CatText.display.fontFamily);
+    expect(text.style?.fontWeight, CatText.display.fontWeight);
+    expect(text.style?.color, CatColors.inkPrimary);
+    expect(fredoka(), findsOneWidget);
+
+    // Inline and additive: no route was pushed, nothing stacked.
+    expect(find.byType(Dialog), findsNothing);
+    expect(find.byType(PracticeScreen), findsOneWidget);
+
+    // Screen readers get it, as _ResultLine always did.
+    expect(
+      tester
+          .widgetList<Semantics>(
+            find.descendant(
+              of: mascotBubble(),
+              matching: find.byType(Semantics),
+            ),
+          )
+          .any((s) => s.properties.liveRegion ?? false),
+      isTrue,
+      reason: 'the bubble must not lose the liveRegion announcement',
+    );
+  });
+
+  testWidgets('"Continuar" stays inside a 360x640 viewport after a wrong '
+      'answer', (tester) async {
+    // The regression this guards: the bubble is the tallest thing on the card
+    // and pushed the only way forward ~148 px below the fold on a small phone.
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final container = practiceContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    final s = stateOf(container);
+    final wrong = s.options.firstWhere((o) => o.id != s.answer.id);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text(wrong.nameUi));
+    await tester.pump();
+    expect(mascotBubble(), findsOneWidget);
+
+    // The screen scrolls it into view itself — no `ensureVisible` from here.
+    await tester.pumpAndSettle();
+    final button = tester.getRect(
+      find.widgetWithText(FilledButton, 'Continuar'),
+    );
+    expect(button.bottom, lessThanOrEqualTo(640.0));
+    expect(button.top, greaterThanOrEqualTo(0.0));
+
+    // And it actually advances, which a tap outside the viewport would not.
+    await tester.tap(find.text('Continuar'));
+    await tester.pump();
+    expect(stateOf(container).index, 1);
+  });
+
+  testWidgets('the bubble is the dark tokens in dark mode', (tester) async {
+    final container = practiceContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      practiceApp(container, brightness: Brightness.dark),
+    );
+    await settleFirstMotif(tester, container);
+
+    final s = stateOf(container);
+    final wrong = s.options.firstWhere((o) => o.id != s.answer.id);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text(wrong.nameUi));
+    await tester.pump();
+
+    expect(bubbleBox(tester).color, CatColors.accentSoftDark);
+    final text = tester.widget<Text>(
+      find.descendant(of: mascotBubble(), matching: find.byType(Text)),
+    );
+    expect(text.style?.color, CatColors.inkPrimaryDark);
+  });
+
+  testWidgets('no bubble while the motif plays, nor before an answer', (
+    tester,
+  ) async {
+    final container = practiceContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+
+    await tester.pump(); // catalog future resolves
+    await tester.pump(); // ExerciseCardFlow mounts
+    await tester.pump(); // the motif starts
+    expect(
+      mascotBubble(),
+      findsNothing,
+      reason: 'never during the exercise audio (UX-DR4)',
+    );
+
+    await tester.pump(stateOf(container).current.motifTotal);
+    await tester.pump();
+    expect(
+      mascotBubble(),
+      findsNothing,
+      reason: 'nothing picked yet — no bubble, no exception',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a one-degree scale error: the bubble names the degree, not the '
+      'two modes', (tester) async {
+    final container = practiceContainer(types: const {ExerciseType.scale});
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    final s = stateOf(container);
+    // The pool is all 4 modes and each has exactly one one-degree neighbour,
+    // so an altered-degree distractor is always on screen.
+    final oneDegreeOff = s.options.firstWhere(
+      (o) =>
+          o.id != s.answer.id &&
+          alteredDegreeNames.containsKey(scaleError(s.answer, o)),
+    );
+    final degree = alteredDegreeNames[scaleError(s.answer, oneDegreeOff)]!;
+
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text(oneDegreeOff.nameUi));
+    await tester.pump();
+
+    final message = bubbleText(tester);
+    expect(message, contains(degree), reason: 'the degree is the lesson');
+    expect(message, contains(s.answer.nameUi));
+    expect(
+      stateOf(container).attempts.single.errorType,
+      isIn(<ErrorType>[
+        ErrorType.tercaAlterada,
+        ErrorType.sextaAlterada,
+        ErrorType.setimaAlterada,
+      ]),
+    );
+  });
+
+  testWidgets('a far-miss scale error still names what it was', (tester) async {
+    final container = practiceContainer(types: const {ExerciseType.scale});
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    final s = stateOf(container);
+    final farOff = s.options.firstWhere(
+      (o) =>
+          o.id != s.answer.id && scaleError(s.answer, o) == ErrorType.farMiss,
+    );
+
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text(farOff.nameUi));
+    await tester.pump();
+
+    expect(stateOf(container).attempts.single.errorType, ErrorType.farMiss);
+    final message = bubbleText(tester);
+    expect(message, contains(s.answer.nameUi));
+    expect(message, contains(farOff.nameUi));
+    expect(message.toLowerCase(), isNot(contains('errado')));
+  });
+
+  testWidgets('a correct chord answer flourishes and advances, like interval', (
+    tester,
+  ) async {
+    final container = practiceContainer(types: const {ExerciseType.chord});
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.tap(find.text(stateOf(container).answer.nameUi));
+    await tester.pump();
+
+    expect(find.textContaining('Isso!'), findsOneWidget);
+    expect(stateOf(container).attempts.single.errorType, isNull);
+    expect(fredoka(), findsNothing);
+    await tester.pump(const Duration(seconds: 2));
+    expect(stateOf(container).index, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the product loop is the full 39, and no card ever mixes types', (
+    tester,
+  ) async {
+    // Story 1.5's visible change: the default loop is no longer intervals only.
+    final container = practiceContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    final s = stateOf(container);
+    expect(s.loop.length, 39);
+    expect(s.loop.map((q) => q.type).toSet(), {
+      ExerciseType.interval,
+      ExerciseType.chord,
+      ExerciseType.scale,
+    });
+
+    // Walk the whole loop through the notifier and check the options the
+    // screen would render at every position. A merged pool would put a triad
+    // (`[4, 7]`, distance 3 from a major third) on an interval card.
+    final notifier = container.read(practiceControllerProvider.notifier);
+    for (var i = 0; i < s.loop.length; i++) {
+      final now = stateOf(container);
+      expect(now.index, i);
+      for (final option in now.options) {
+        expect(
+          now.pool[now.current.type],
+          contains(option),
+          reason:
+              'position $i (${now.current.type.name}) offered '
+              '"${option.nameUi}" from another catalog',
+        );
+      }
+      notifier.answer(now.answer, 100);
+      notifier.advance();
+    }
+    await tester.pump();
+    expect(
+      find.text('Você percorreu todos os exercícios de hoje.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a chord plays block -> arpeggio -> block, 5 events', (
+    tester,
+  ) async {
+    final fake = FakeAudioService();
+    final container = practiceContainer(
+      audio: fake,
+      types: const {ExerciseType.chord},
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    final refs = stateOf(container).current.audioSampleRefs;
+    expect(refs.length, 4, reason: '[block, root, third, fifth]');
+    expect(fake.playedRefs, [refs[0], refs[1], refs[2], refs[3], refs[0]]);
+  });
+
+  testWidgets('a scale plays all 8 notes, in the order of its refs', (
+    tester,
+  ) async {
+    final fake = FakeAudioService();
+    final container = practiceContainer(
+      audio: fake,
+      types: const {ExerciseType.scale},
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    final refs = stateOf(container).current.audioSampleRefs;
+    expect(refs.length, 8);
+    // Story 1.4's fixed 3-event contour played `r0, r1, r0` here — two notes
+    // out of eight, which is not a scale.
+    expect(fake.playedRefs, refs);
+  });
+
+  testWidgets('the celebration delay comes from the injected timings', (
+    tester,
+  ) async {
+    // The seam the 1.4 review asked for: a test states the timing it depends
+    // on instead of matching a constant inside the widget by hand.
+    final container = practiceContainer(
+      timings: const PracticeTimings(
+        advanceDelay: Duration(milliseconds: 2500),
+      ),
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.tap(find.text(stateOf(container).answer.nameUi));
+    await tester.pump();
+    // Past the default 700 ms (plus the ~510 ms flourish), still on the same
+    // card because the override pushed the auto-advance out to 2500 ms.
+    await tester.pump(const Duration(milliseconds: 1500));
+    expect(stateOf(container).index, 0);
+    await tester.pump(const Duration(milliseconds: 3000));
+    expect(stateOf(container).index, 1);
+  });
+
+  testWidgets('the flourish gap comes from the injected timings', (
+    tester,
+  ) async {
+    // The other half of the seam: `flourishGap` reaches the PhrasePlayer the
+    // screen builds. Stretched to 800 ms so the three flourish notes land in
+    // separate pumps — at the 170 ms default they would all fire in one.
+    final fake = FakeAudioService();
+    final container = practiceContainer(
+      audio: fake,
+      timings: const PracticeTimings(flourishGap: Duration(milliseconds: 800)),
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(practiceApp(container));
+    await settleFirstMotif(tester, container);
+
+    final beforeFlourish = fake.playedRefs.length;
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.tap(find.text(stateOf(container).answer.nameUi));
+    await tester.pump();
+
+    expect(fake.playedRefs.length, beforeFlourish + 1);
+    await tester.pump(const Duration(milliseconds: 800));
+    expect(fake.playedRefs.length, beforeFlourish + 2);
+    await tester.pump(const Duration(milliseconds: 800));
+    expect(fake.playedRefs.length, beforeFlourish + 3);
+    expect(
+      fake.playedRefs.sublist(beforeFlourish),
+      PhrasePlayer.flourishRefs,
+      reason: 'the injected gap must not change what the flourish plays',
+    );
+  });
+
+  testWidgets('an empty loop lands on the end-of-loop view, not a crash', (
+    tester,
+  ) async {
+    // `loop.isEmpty` is a branch Story 1.5a introduced — it could not happen
+    // before, because the interval loop is never empty. It is reachable now
+    // through `practiceExerciseTypesProvider`, so it needs a guard: without
+    // one, `_optionsFor(loop, pool, 0)` indexes an empty list.
+    final container = practiceContainer(types: const <ExerciseType>{});
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(practiceApp(container));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Você percorreu todos os exercícios de hoje.'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('intervalos'),
+      findsNothing,
+      reason: 'the loop holds chords and scales too — naming one would lie',
+    );
+    expect(find.text('Voltar'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+}

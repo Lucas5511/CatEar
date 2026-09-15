@@ -27,12 +27,12 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.byType(IntervalExerciseScreen), findsOneWidget);
+    expect(find.byType(PracticeScreen), findsOneWidget);
 
     // Android back returns to Home.
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(find.byType(IntervalExerciseScreen), findsNothing);
+    expect(find.byType(PracticeScreen), findsNothing);
     expect(find.text('Que bom ter você no CatEar!'), findsOneWidget);
   });
 }

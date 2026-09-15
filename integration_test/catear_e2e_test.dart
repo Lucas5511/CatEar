@@ -27,7 +27,6 @@ import 'package:catear/audio/audio.dart';
 import 'package:catear/core/core.dart';
 import 'package:catear/curriculo/curriculo.dart';
 import 'package:catear/exercicios/exercicios.dart';
-import 'package:catear/exercicios/presentation/interval_exercise_screen.dart';
 import 'package:catear/progressao/progressao.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -396,7 +395,7 @@ void main() {
       // The shell is offstage behind the pushed exercise route, so the
       // container has to be read from the screen that is actually on top.
       final container = ProviderScope.containerOf(
-        tester.element(find.byType(IntervalExerciseScreen)),
+        tester.element(find.byType(PracticeScreen)),
       );
       final recorded = await container
           .read(variantHistoryRepositoryProvider)

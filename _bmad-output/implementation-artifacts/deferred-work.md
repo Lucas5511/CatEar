@@ -200,7 +200,7 @@ retêm como itens com dono, não follow-up genérico.
   não de exercício. A 1.5 não acrescentou nenhuma bifurcação por brightness (as
   duas existentes em `_OptionButton.build` continuam como estavam), então o item
   não piorou e não tem por que ser feito sob a intenção desta story.
-  evidence: `lib/exercicios/presentation/interval_exercise_screen.dart`
+  evidence: `lib/exercicios/presentation/exercise_card_flow.dart`
   (`_OptionButton.build`), `lib/exercicios/presentation/exercise_card.dart`.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-exercicio-de-reconhecimento-de-intervalo-em-contexto-musical.md`
   summary: `PhrasePlayer` (gaps 450/450/900 ms) e o `_advanceTimer` de 700 ms
@@ -253,7 +253,7 @@ mostrados como "temporário". Itens abaixo ficam para stories futuras.
   summary: `_RetryView` em `exercicios/presentation/` reimplementa
   `lib/app/database_error_screen.dart` (mesma árvore, string "temporário"
   copiada). Promover o "warm retry screen" para `core/` e reusar nos dois lados.
-  evidence: `lib/exercicios/presentation/interval_exercise_screen.dart`
+  evidence: `lib/exercicios/presentation/practice_screen.dart`
   (`_RetryView`) vs `lib/app/database_error_screen.dart`.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-exercicio-de-reconhecimento-de-intervalo-em-contexto-musical.md`
   summary: 3 subclasses ad-hoc de `CachingAssetBundle` no `test/` (`_RealCatalogBundle`,
@@ -261,36 +261,36 @@ mostrados como "temporário". Itens abaixo ficam para stories futuras.
   centralizar; parte dos testes de `exercicios/` nem precisa do bundle override
   (basta `curriculoRepositoryProvider.load()` sob `flutter test`). Consolidar em
   `test/support/`.
-  evidence: `test/exercicios/interval_exercise_screen_test.dart`,
+  evidence: `test/exercicios/support/practice_harness.dart`,
   `test/curriculum_catalog_test.dart`, `test/support/curriculum_fixtures.dart`.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-exercicio-de-reconhecimento-de-intervalo-em-contexto-musical.md`
   summary: Três idiomas separados de "delay cancelável" (`PhrasePlayer._wait`/
   `_generation`, `_advanceTimer`+`_advanced`, `FakeAudioService` `Completer`+
   `identical`). Um `CancelableDelay` em `core/` colapsaria os três.
   evidence: `lib/exercicios/presentation/phrase_player.dart`,
-  `interval_exercise_screen.dart`, `lib/audio/testing/fake_audio_service.dart`.
+  `exercise_card_flow.dart`, `lib/audio/testing/fake_audio_service.dart`.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-exercicio-de-reconhecimento-de-intervalo-em-contexto-musical.md`
-  summary: Redundância de estado no `_ActiveExerciseViewState` — `_optionsEnabled`
+  summary: Redundância de estado no `_ExerciseCardFlowState` — `_optionsEnabled`
   é o shadow booleano de `_enabledAt != null`; `_motifInFlight` reimplementa o
   `_generation` do `PhrasePlayer`; `_advanced` duplica a guarda de fase do
-  `IntervalPractice.advance()`. Enxugar quando a 1.5 tocar neste widget.
-  evidence: `lib/exercicios/presentation/interval_exercise_screen.dart:217-232`.
+  `PracticeController.advance()`. Enxugar quando a 1.5 tocar neste widget.
+  evidence: `lib/exercicios/presentation/exercise_card_flow.dart` (`_ExerciseCardFlowState`).
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-exercicio-de-reconhecimento-de-intervalo-em-contexto-musical.md`
   summary: `IntervalPracticeState` copia `loop`/`pool` (23 + 13 itens) com
   `List.unmodifiable` a cada `answer()`/`advance()` embora sejam constantes pela
   vida da tela; `intervalPool` chama `intervalLoop` de novo no `build()`. Passar
   `loop` pré-computado / guardar as listas imutáveis uma vez.
-  evidence: `lib/exercicios/presentation/interval_exercise_screen.dart`
-  (`IntervalPracticeState` ctor, `IntervalPractice.build`),
+  evidence: `lib/exercicios/presentation/practice_controller.dart`
+  (`PracticeState` ctor, `PracticeController.build`),
   `lib/exercicios/domain/interval_practice.dart` (`intervalPool`).
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-exercicio-de-reconhecimento-de-intervalo-em-contexto-musical.md`
   summary: `ExerciseCard` só carrega estilo (`Container` decorado) — não é o seam
   slot-based que "1.5 reusa sem ramificar por tipo" pede. O prompt, o player, o
   loop de opções, `_ResultLine` e "Continuar" estão presos a `IntervalSpec` no
-  `_ActiveExerciseViewState`. Extrair slots type-agnostic (player / resposta /
+  `_ExerciseCardFlowState`. Extrair slots type-agnostic (player / resposta /
   resultado) antes da 1.5, ou aceitar a cópia.
   evidence: `lib/exercicios/presentation/exercise_card.dart`,
-  `interval_exercise_screen.dart` (`_ActiveExerciseViewState.build`).
+  `exercise_card_flow.dart` (`_ExerciseCardFlowState.build`).
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-exercicio-de-reconhecimento-de-intervalo-em-contexto-musical.md`
   summary: `ExerciseAttempt.errorTypeForIntervalId` acopla `IntervalSpec.id` e
   `ErrorType.id` por igualdade de string com `orElse: throw` — quebra em runtime
@@ -478,7 +478,7 @@ recebem o número correspondente.
   evidence: `DESIGN.md:61` define o mascote como "um gatinho professor gentil, num estilo cartunesco vetorial flat com contornos grossos… guia emocional". A Story 1.6 entregou os tokens que a spec pediu (`accent-soft`, `rounded/lg`, sombra quente, Fredoka), e o asset nunca esteve no escopo dela — mas sem este registro a componente parece concluída. Precisa de decisão de produto sobre o asset (sourcing/licença, como as amostras de áudio precisaram) antes de virar story.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-6-feedback-explicativo-em-erro.md`
-  summary: `_MascotBubble` é privado de `interval_exercise_screen.dart`, mas o design pede o balão em quatro lugares — boas-vindas do nivelamento, feedback de erro, celebração de vitória e resumo de sessão.
+  summary: `_MascotBubble` é privado de `exercise_card_flow.dart`, mas o design pede o balão em quatro lugares — boas-vindas do nivelamento, feedback de erro, celebração de vitória e resumo de sessão.
   evidence: `DESIGN.md:102` e `EXPERIENCE.md:48` listam os quatro. Não existe camada de widgets compartilhados (`lib/core/` tem só `database/` e `theme/`). O custo já apareceu nesta story: `integration_test/catear_e2e_test.dart` identifica o balão por `fontFamily == 'Fredoka'` justamente porque a classe é inalcançável de fora. As Stories 1.7 e 1.9 vão duplicá-lo se nada mudar — decidir onde mora um widget compartilhado é decisão de arquitetura (Ask First).
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-6-feedback-explicativo-em-erro.md`
@@ -500,7 +500,7 @@ afirmava), a contagem por sessão redigida como total do dia ("hoje" →
   relógio no meio da sessão dispara a oferta cedo demais ou a suprime pelo
   resto da sessão.
   evidence: `lib/exercicios/domain/session_result.dart` (`elapsedAt`),
-  `lib/exercicios/presentation/interval_exercise_screen.dart`
+  `lib/exercicios/presentation/practice_controller.dart`
   (`_shouldOfferEnd`).
   ✅ **ACEITO como está (2026-09-08), não é dívida a pagar.** Trocar por
   `Stopwatch` mata o seam de `clock` — é ele que faz os testes da oferta
@@ -551,3 +551,19 @@ afirmava), a contagem por sessão redigida como total do dia ("hoje" →
   por id; enquanto isso, o arquivo descreve a 1.6 de forma desatualizada e não
   menciona os eixos de variação. Dono natural: a próxima story que precisar do
   contexto do épico atualizado, ou uma passada de manutenção de artefatos.
+
+## Deferred from: step-04 review de spec-1-8b (2026-09-15, review_loop 0)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-8b-costura-do-card-de-exercicio.md`
+  summary: "Ouvir de novo" tocado durante o flourish (~510 ms) de um acerto arma
+  o timer de auto-avanço depois de o replay ter começado — o card avança no meio
+  do replay.
+  evidence: `lib/exercicios/presentation/exercise_card_flow.dart` (`_pick`):
+  `_playMotif` cancela `_advanceTimer` no início, mas `_pick` só o arma **depois**
+  do `await _player.playFlourish()`; um replay iniciado nessa janela não cancela
+  nada e o timer (700 ms) dispara com o motif (~1,8 s) ainda em voo. Idêntico ao
+  baseline `5903ac0` (`interval_exercise_screen.dart:570-573`) — pré-existente,
+  não causado pela 1.8b. O teste 'replaying after a correct answer cancels the
+  pending auto-advance' cobre só o replay **depois** de o timer existir.
+  Correção provável: em `_pick`, após o `await`, `if (_motifInFlight) { _revealContinue(); return; }`
+  antes de armar o timer. Dono natural: a próxima story que tocar em `ExerciseCardFlow`.
