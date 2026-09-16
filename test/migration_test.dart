@@ -21,7 +21,9 @@ import 'generated/migrations/schema.dart';
 ///
 /// Story 1.8 cashed the promise in: `recent_variants` arrives at v2 through
 /// `onUpgrade`, and the 1 → 2 case below is the proof that an existing install
-/// keeps its data across the step. When a later story adds a table:
+/// keeps its data across the step. Story 1.9 repeats it: `placements` arrives
+/// at v3, and the 2 → 3 case proves the v2 rows survive. When a later story
+/// adds a table:
 ///   1. `dart run drift_dev schema dump lib/core/database/app_database.dart drift_schemas/`
 ///   2. `dart run drift_dev schema generate drift_schemas/ test/generated/migrations/`
 ///   3. add a `migrateAndValidate(db, N)` case below, with the same
@@ -126,6 +128,61 @@ void main() {
   test('v2 schema holds exactly the recent_variants table', () async {
     final schema = await verifier.schemaAt(2);
     expect(_userTables(schema.rawDatabase), ['recent_variants']);
+  });
+
+  test('migrating a v2 database to v3 creates placements', () async {
+    final connection = await verifier.startAt(2);
+    final db = AppDatabase(connection.executor);
+    addTearDown(db.close);
+
+    await verifier.migrateAndValidate(db, 3);
+  });
+
+  test('migrating a v1 database straight to v3 walks both steps', () async {
+    // An install that skipped a release: `onUpgrade` runs once with
+    // `from = 1`, and both `if (from < N)` blocks have to fire.
+    final connection = await verifier.startAt(1);
+    final db = AppDatabase(connection.executor);
+    addTearDown(db.close);
+
+    await verifier.migrateAndValidate(db, 3);
+  });
+
+  test('recent_variants rows written at v2 survive the v3 migration', () async {
+    // Story 1.9: the first migration with real user data on the other side.
+    // A learner who practised on a v2 build keeps their anti-decoreba history
+    // when the levelling table arrives.
+    final schema = await verifier.schemaAt(2);
+    schema.rawDatabase.execute(
+      'INSERT INTO recent_variants (relation_key, root_token, used_at) '
+      "VALUES ('interval:M3:asc', 'sax_c4', '2026-09-09T00:00:00.000Z')",
+    );
+    schema.rawDatabase.execute(
+      'INSERT INTO recent_variants (relation_key, root_token, used_at) '
+      "VALUES ('scale:dorian:asc', 'sax_d4', '2026-09-10T00:00:00.000Z')",
+    );
+
+    final db = AppDatabase(schema.newConnection());
+    addTearDown(db.close);
+    await db.customSelect('SELECT 1').get(); // forces the upgrade to run
+
+    final survivors = await db.recentVariantsDao.mostRecent(10);
+    expect(survivors.map((r) => r.rootToken).toList(), ['sax_d4', 'sax_c4']);
+
+    // …and the new table is empty (no level was ever recorded) and usable
+    // straight after the upgrade, not just present in `sqlite_schema`.
+    expect(await db.placementsDao.current(), isNull);
+    await db.placementsDao.record(
+      stageId: 's-tercas',
+      correctCount: 3,
+      recordedAt: DateTime.utc(2026, 9, 15),
+    );
+    expect(await db.placementsDao.countAll(), 1);
+  });
+
+  test('v3 schema holds exactly recent_variants and placements', () async {
+    final schema = await verifier.schemaAt(3);
+    expect(_userTables(schema.rawDatabase), ['placements', 'recent_variants']);
   });
 }
 

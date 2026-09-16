@@ -9,6 +9,9 @@
 //
 // Covered:
 //   - app shell (Story 1.1): boot gate, 4-tab navigation, theme, Android back
+//   - levelling (Story 1.9): first boot → the whole levelling over real audio
+//     → summary → Home, and the second boot landing on Home off the real
+//     `placements` row
 //   - practice flow (Stories 1.4 / 1.5): the "Praticar" journey over the REAL
 //     provider graph — the widget suite fakes `audioServiceProvider`, so this
 //     is the only place the real `_JustAudioService` and its lifecycle are
@@ -27,6 +30,7 @@ import 'package:catear/audio/audio.dart';
 import 'package:catear/core/core.dart';
 import 'package:catear/curriculo/curriculo.dart';
 import 'package:catear/exercicios/exercicios.dart';
+import 'package:catear/nivelamento/nivelamento.dart';
 import 'package:catear/progressao/progressao.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -43,7 +47,29 @@ import '../test/support/audio_service_contract.dart';
 
 // ---------------------------------------------------------------- app shell
 
+/// An in-memory database that already holds a starting level, recorded the
+/// way the levelling records it — through the Progressão's port, over the real
+/// provider graph — so a boot lands on the shell (Story 1.9). Every pre-1.9
+/// journey assumed a levelled learner implicitly; this makes it explicit.
+Future<AppDatabase> levelledDatabase() async {
+  final db = AppDatabase(NativeDatabase.memory());
+  addTearDown(db.close);
+  final seed = ProviderContainer(
+    overrides: [databaseProvider.overrideWith((ref) async => db)],
+  );
+  await seed
+      .read(placementRepositoryProvider)
+      .record(stageId: 's-tercas', correctCount: 3);
+  seed.dispose();
+  return db;
+}
+
 /// Pumps the real app with an in-memory database.
+///
+/// [database] is the database the app opens; by default one that already
+/// holds a starting level ([levelledDatabase]), so the boot lands on the
+/// shell. Pass an empty one to land on the levelling, or the same one twice
+/// to simulate a second boot.
 ///
 /// [failFirst] makes the first open attempt throw so the retry path can be
 /// exercised; the next attempt (after `ref.invalidate`) succeeds.
@@ -56,11 +82,13 @@ import '../test/support/audio_service_contract.dart';
 /// assert on what a session did — or did not — report (Story 1.7).
 Future<void> pumpApp(
   WidgetTester tester, {
+  AppDatabase? database,
   bool failFirst = false,
   Set<ExerciseType>? practiceTypes,
   SessionResultReporter? reporter,
 }) async {
   var shouldFail = failFirst;
+  final db = database ?? await levelledDatabase();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -73,8 +101,6 @@ Future<void> pumpApp(
             shouldFail = false;
             throw StateError('simulated database open failure');
           }
-          final db = AppDatabase(NativeDatabase.memory());
-          addTearDown(db.close);
           return db;
         }),
       ],
@@ -317,15 +343,10 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
+      final db = await levelledDatabase();
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [
-            databaseProvider.overrideWith((ref) async {
-              final db = AppDatabase(NativeDatabase.memory());
-              addTearDown(db.close);
-              return db;
-            }),
-          ],
+          overrides: [databaseProvider.overrideWith((ref) async => db)],
           child: const MediaQuery(
             data: MediaQueryData(textScaler: TextScaler.linear(2.0)),
             child: CatEarApp(),
@@ -513,6 +534,101 @@ void main() {
         reason: 'an abandoned session reports nothing, however far it got',
       );
     });
+  });
+
+  // Story 1.9: the levelling over the REAL provider graph — real audio for
+  // all seven cards, the real Progressão port over a real Drift database, and
+  // the boot gate reading it back. The widget suite fakes the audio and the
+  // port; this is the only place the first-use journey runs end to end.
+  group('levelling (Story 1.9)', () {
+    /// Answers the card on screen with its first option and moves on: waits
+    /// out the celebration on a right answer, taps "Continuar" on a wrong one.
+    Future<void> answerCurrentCard(WidgetTester tester) async {
+      // Let the real AudioService sequence the interval motif
+      // (450 + 450 + 900 ms) with slack for the platform player.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      expect(find.text('Que intervalo é este?'), findsOneWidget);
+      expect(
+        find.textContaining('O som não tocou'),
+        findsNothing,
+        reason: 'the real AudioService must stay alive across the cards',
+      );
+      final options = find.byType(FilledButton);
+      expect(options, findsWidgets);
+      await tester.tap(options.first);
+      await tester.pumpAndSettle();
+      expectExplainedResult(tester);
+      if (find.text('Continuar').evaluate().isNotEmpty &&
+          find.textContaining('Isso!').evaluate().isEmpty) {
+        await tester.tap(find.text('Continuar'));
+      }
+      // Either the auto-advance (flourish + 700 ms) or the tap has moved on.
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets(
+      'first boot: the levelling end to end, then Home; second boot: Home',
+      (tester) async {
+        final db = AppDatabase(NativeDatabase.memory());
+        addTearDown(db.close);
+
+        await pumpApp(tester, database: db);
+
+        // First use: the levelling fills the screen — no shell, no tab bar.
+        expect(find.byType(NivelamentoScreen), findsOneWidget);
+        expect(find.byType(HomeShell), findsNothing);
+        expect(find.byType(NavigationBar), findsNothing);
+        expect(find.byType(MascotBubble), findsOneWidget);
+
+        await tester.tap(find.text('Vamos lá'));
+        await tester.pumpAndSettle();
+
+        for (var i = 0; i < placementSequence.length; i++) {
+          await answerCurrentCard(tester);
+        }
+
+        // The summary: the mascot, a named level, one CTA.
+        expect(find.byType(ExerciseCardFlow), findsNothing);
+        expect(find.byType(MascotBubble), findsOneWidget);
+        expect(find.text('Ir para a Home'), findsOneWidget);
+        final placed = await ProviderScope.containerOf(
+          tester.element(find.byType(NivelamentoScreen)),
+        ).read(placementRepositoryProvider).current();
+        expect(placed, isNotNull, reason: 'the level is on the record');
+        expect(find.text(stageNameFor(placed!.stageId)), findsOneWidget);
+        expect(placed.correctCount, inInclusiveRange(0, 7));
+
+        await tester.tap(find.text('Ir para a Home'));
+        await tester.pumpAndSettle();
+        expect(find.byType(HomeShell), findsOneWidget);
+        expect(find.text('Que bom ter você no CatEar!'), findsOneWidget);
+        expect(navBar(tester).selectedIndex, 0);
+
+        // Back does not return to the levelling: the gate swapped it out in
+        // place, so there is no route beneath the shell to pop to. Asserted
+        // on the Navigator rather than by firing a back event — on the root
+        // route, with nothing to pop, `handlePopRoute` falls through to
+        // `SystemNavigator.pop()`, which finishes the Android activity, and
+        // every later platform-channel call in this run (the real
+        // `AudioPlayer` of the next group) then hangs until the job's
+        // timeout. The two `handlePopRoute` calls above run on a deep tab or
+        // a pushed route, where something is there to consume the event.
+        expect(find.byType(NivelamentoScreen), findsNothing);
+        expect(
+          Navigator.of(tester.element(find.byType(HomeShell))).canPop(),
+          isFalse,
+          reason: 'nothing beneath the shell — the levelling was not pushed',
+        );
+
+        // Second boot over the same database: straight to Home.
+        await pumpApp(tester, database: db);
+        expect(find.byType(HomeShell), findsOneWidget);
+        expect(find.byType(NivelamentoScreen), findsNothing);
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
   });
 
   // The full AudioService contract, against the real service. Anything that is

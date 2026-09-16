@@ -3,11 +3,11 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('AppDatabase opens at schema v2 and runs onCreate', () async {
+  test('AppDatabase opens at schema v3 and runs onCreate', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
 
-    expect(db.schemaVersion, 2);
+    expect(db.schemaVersion, 3);
 
     // Forces the connection open -> beforeOpen + onCreate run without error.
     final row = await db
@@ -22,5 +22,6 @@ void main() {
     // produces for an existing one — see test/migration_test.dart for the
     // upgrade half.
     expect(await db.recentVariantsDao.countAll(), 0);
+    expect(await db.placementsDao.countAll(), 0);
   });
 }
