@@ -258,14 +258,18 @@ void main() {
       // widget suite injects the value through `setMockInitialValues`, which
       // answers from a static before the channel is ever touched, so a plugin
       // that silently stopped resolving would ship with everything else green.
-      final version = tester
-          .widget<Text>(
-            find.descendant(
-              of: find.widgetWithText(ListTile, 'Versão'),
-              matching: find.byType(Text).last,
-            ),
-          )
-          .data!;
+      // Read the tile's own `subtitle`, not "the last Text under it": a
+      // `.last` on `find.byType(Text)` ranks over the WHOLE tree, and the
+      // last Text in the running app is the `NavigationBar`'s "Ajustes"
+      // label, which is no descendant of this tile — the finder then matches
+      // nothing and dies as `Bad state: No element`. It only looked right
+      // against a tree with the screen alone and no shell around it.
+      final version =
+          (tester
+                      .widget<ListTile>(find.widgetWithText(ListTile, 'Versão'))
+                      .subtitle!
+                  as Text)
+              .data!;
       expect(
         version,
         isNot(unknownAppVersion),

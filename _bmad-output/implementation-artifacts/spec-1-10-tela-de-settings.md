@@ -106,6 +106,8 @@ context:
 
 **Test harnesses made honest.** `home_shell_test` and `accessibility_test` build Settings eagerly through `HomeShell`'s `IndexedStack`, so both now get an in-memory `databaseProvider` and a `PackageInfo` mock instead of passing because the missing platform channels throw and the failures are swallowed — `accessibility_test` asserts that no non-overflow error escapes, which was true by accident.
 
+- **Primeira execução on-device (PR #35, run 35231505821): a asserção nova reprovou — e foi ela que pegou.** O finder era `find.descendant(of: widgetWithText(ListTile, 'Versão'), matching: find.byType(Text).last)`. O `.last` ranqueia sobre a árvore **inteira**, não sobre os descendentes: no app rodando o último `Text` é o rótulo "Ajustes" da `NavigationBar` (o `bottomNavigationBar` vem depois do body na árvore), que não é descendente do tile — o finder casa com nada e morre em `Bad state: No element`. O finder tinha sido "verificado" num teste de widget descartável que montava só a `SettingsScreen`, sem o shell em volta: assimetria de ambiente, exatamente o que o fragmento de evidence-integrity descreve. Corrigido lendo o `subtitle` do próprio `ListTile`. Lição: verificar finder contra a árvore que o teste vai encontrar, não contra uma menor.
+
 ## Spec Change Log
 
 ## Review Triage Log
