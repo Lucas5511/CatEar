@@ -608,3 +608,34 @@ afirmava), a contagem por sessão redigida como total do dia ("hoje" →
   prática não tem. Correção: mover para `lib/core/widgets/retry_view.dart`
   com a versão acessível e apontar as duas telas para ele. Dono natural: a
   Story 1.10 (Settings) ou a próxima que tocar em `practice_screen.dart`.
+
+## Deferred from: step-04 review de spec-1-10 (2026-09-17, review_loop 0)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-10-tela-de-settings.md`
+  summary: A coluna `value` de `preferences` tem um teto silencioso de 256
+  caracteres (`withLength(max: 256)` vira CHECK constraint no SQLite) sem
+  justificativa registrada e sem teste; como `ThemeModeController.set` engole
+  falhas de gravação, a primeira preferência maior que isso falha de forma
+  invisível.
+  evidence: `lib/core/database/preferences.dart` (coluna `value`), confirmado
+  no `drift_schemas/drift_schema_v4.json`. A 1.10 só grava tokens de ≤ 6 chars
+  (`light|dark|system`), então o risco é do próximo inquilino da tabela — a doc
+  da tabela cita o volume de reprodução do Epic 3. Correção: documentar o
+  porquê do 256 (ou remover o cap) e, se ficar, um teste que prova o
+  comportamento no estouro. Dono natural: a primeira story que gravar uma
+  segunda preferência.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-10-tela-de-settings.md`
+  summary: A AC principal da 1.10 — "a escolha de tema sobrevive a um restart"
+  — não tem prova on-device: toda jornada E2E usa um banco Drift **em
+  memória**, criado do zero por teste.
+  evidence: `integration_test/catear_e2e_test.dart` (`levelledDatabase()` →
+  `NativeDatabase.memory()`). Provar o restart de verdade exige reabrir o app
+  sobre o mesmo arquivo em disco, o que a suíte `integration_test` não faz
+  hoje (um processo, um `pumpWidget` por teste). Opções: um teste que aponte o
+  `databaseProvider` para um arquivo temporário e reconstrua a árvore duas
+  vezes (prova a persistência no `sqlite3` real, não o restart do processo),
+  ou aceitar que o restart fica coberto só por teste de widget. O review da
+  1.10 fechou o que dava: a jornada existente passou a provar a versão real do
+  `package_info_plus`. Dono natural: quem for endereçar o item de teste em
+  disco, ou a story que precisar de mais preferências persistidas.

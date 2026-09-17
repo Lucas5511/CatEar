@@ -8,9 +8,9 @@ App de treino de **ouvido relativo** — reconhecimento (e, a partir do Epic 3, 
 
 ## Estado atual
 
-**Epic 1 — Fundação técnica + primeiro loop de reconhecimento jogável** · em andamento (**10 de 12 stories entregues**, última: 1.8b em 2026-09-15; 1.9 em review).
+**Epic 1 — Fundação técnica + primeiro loop de reconhecimento jogável** · em andamento (**11 de 12 stories entregues**, última: 1.9 em 2026-09-16; 1.10 em review).
 
-Hoje o app abre, no primeiro uso, direto no **nivelamento** (7 intervalos, primeira vitória celebrada pelo mascote, nível de partida persistido) e, nas seguintes, numa Home com 4 abas; o botão **Praticar** abre uma sessão de reconhecimento (intervalos, acordes e escalas em contexto musical, com áudio de sax real), cada erro é explicado por um balão do mascote nomeando a confusão, a sessão oferece encerrar aos ~12 min e nunca repete um exercício idêntico nas últimas 39 tentativas. Falta a tela de Settings completa (1.10).
+Hoje o app abre, no primeiro uso, direto no **nivelamento** (7 intervalos, primeira vitória celebrada pelo mascote, nível de partida persistido) e, nas seguintes, numa Home com 4 abas; o botão **Praticar** abre uma sessão de reconhecimento (intervalos, acordes e escalas em contexto musical, com áudio de sax real), cada erro é explicado por um balão do mascote nomeando a confusão, a sessão oferece encerrar aos ~12 min e nunca repete um exercício idêntico nas últimas 39 tentativas. A aba **Ajustes** guarda o tema escolhido entre sessões, mostra a versão real do build e reserva o item de Microfone do Epic 3.
 
 | Story | Estado | O que entregou |
 |---|---|---|
@@ -24,12 +24,12 @@ Hoje o app abre, no primeiro uso, direto no **nivelamento** (7 intervalos, prime
 | **1.7 — Sessão de 10–15 min** | ✅ PR #29, #30 | Sessão com `sessionId` UUID v4, oferta de encerrar ao atingir o alvo (sem culpa), definição de concluída vs. abandono, `SessionResultReported` emitido exatamente uma vez |
 | **1.8 — Variações anti-decoreba** | ✅ PR #31 | Janela de 39 tentativas sem repetição idêntica, LRU quando o pool esgota, tabela `recent_variants` (schema v2) no módulo `progressao` como dono único (AD-2) |
 | **1.8b — Costura do card de exercício** | ✅ PR #33 | `ExerciseCardFlow` dirigido por `onAnswer`/`onAdvance`, exportado pelo barrel como contrato de UI compartilhado; `PracticeController` e `PracticeScreen` separados do card, pré-requisito da 1.9 |
-| **1.9 — Nivelamento por reconhecimento** | 🔍 em review (este PR) | Primeiro uso cai no nivelamento (gate por `placementProvider`); 7 intervalos ascendentes no `ExerciseCardFlow` com notifier próprio; nível de partida = 1º estágio errado, gravado na tabela `placements` (schema v3) pelo port `PlacementRepository` da Progressão; mascote celebra a primeira vitória (ou o primeiro passo, sem placar) |
-| 1.10 — Tela de Settings | ⏳ a única restante | Tema + "Sobre" + gancho de microfone para o Epic 3 |
+| **1.9 — Nivelamento por reconhecimento** | ✅ PR #34 | Primeiro uso cai no nivelamento (gate por `placementProvider`); 7 intervalos ascendentes no `ExerciseCardFlow` com notifier próprio; nível de partida = 1º estágio errado, gravado na tabela `placements` (schema v3) pelo port `PlacementRepository` da Progressão; mascote celebra a primeira vitória (ou o primeiro passo, sem placar) |
+| **1.10 — Tela de Settings** | 🔍 em review (este PR) | Tema persistido na tabela `preferences` (schema v4) e restaurado antes do primeiro frame com conteúdo; "Sobre" com a versão real do build (`package_info_plus`); item "Microfone" desabilitado como gancho do Epic 3 |
 
 Rastreamento: [`sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml) · review de qualidade mais recente: [`quality-review-epic-1-2026-09-15.md`](_bmad-output/test-artifacts/quality-review-epic-1-2026-09-15.md) (gate **CONCERNS** — a 1.9 pode seguir; o fechamento do épico tem pendências listadas lá).
 
-`flutter test` → **419 testes** · `integration_test/` → **23 testes E2E** on-device (rodam no CI em emulador Android).
+`flutter test` → **458 testes** · `integration_test/` → **23 testes E2E** on-device (rodam no CI em emulador Android).
 
 ---
 
@@ -37,9 +37,10 @@ Rastreamento: [`sprint-status.yaml`](_bmad-output/implementation-artifacts/sprin
 
 - **Flutter 3.47.x** / Dart 3.13.x — projeto novo, sem template starter
 - **Riverpod** (`flutter_riverpod` 3.4.2 + `riverpod_annotation` 4.0.6 / `riverpod_generator` — codegen) — gerência de estado
-- **Drift** 2.34.3 — banco local SQLite; schema **v3** (`recent_variants`, `placements`), migrações testadas contra os snapshots de `drift_schemas/`
+- **Drift** 2.34.3 — banco local SQLite; schema **v4** (`recent_variants`, `placements`, `preferences`), migrações testadas contra os snapshots de `drift_schemas/`
 - **`just_audio`** 0.10.6 — reprodução das amostras embarcadas (em uso desde a 1.3)
 - **`record`** 7.1.1 — no `pubspec` pelo pin do Epic 1, **ainda não usado** (entra no Epic 3)
+- **`package_info_plus`** 10.2.1 — versão real do build em Ajustes → Sobre (único ponto de uso: `lib/app/app_version.dart`); traz `http` e `win32` como dependências transitivas novas
 - `clock` (relógio injetável da sessão), `uuid`, `path_provider`, `sqlite3_flutter_libs`, `flutter_localizations` (pt-BR)
 
 Código gerado (`*.g.dart`, `*.drift.dart`) é **git-ignorado** e regenerado no CI.
@@ -50,7 +51,7 @@ Código gerado (`*.g.dart`, `*.drift.dart`) é **git-ignorado** e regenerado no 
 
 **Módulos por feature** — `lib/{core, nivelamento, exercicios, progressao, audio, curriculo}`. Cada um tem `data/ domain/ presentation/` e expõe um único **barrel público** `<módulo>.dart` que só reexporta de `domain/` (+ o provider Riverpod e, quando há, a tela de entrada). `data/` e `presentation/` de um módulo **nunca** são importados de fora dele — `tool/check_module_boundaries.dart` falha o CI se violado.
 
-- **`core/`** — tokens de design, `ThemeData` claro/escuro, `CatText`, `AppDatabase` + DAOs + `databaseProvider`. Modelos/tabelas gerados pelo Drift nunca cruzam a fronteira `data/ → domain/` nem saem de `core/`.
+- **`core/`** — tokens de design, `ThemeData` claro/escuro, `CatText`, `AppDatabase` + DAOs + `databaseProvider`, e o `ThemePreferenceRepository` (preferência de *shell*, não de feature: `lib/app/` é o único leitor/escritor). Modelos/tabelas gerados pelo Drift nunca cruzam a fronteira `data/ → domain/` nem saem de `core/`.
 - **`lib/app/`** — o shell (`HomeShell`, `HomeScreen`, `SettingsScreen`, `DatabaseErrorScreen`) — preocupações de shell, não features.
 - **`audio/`** — `AudioService` (interface) + `_JustAudioService` (real) + `FakeAudioService` (`lib/audio/testing.dart`, importável só de `test/`). Só este módulo importa `just_audio`/`record`.
 - **`exercicios/`** — o loop de prática: `ExerciseQuestion`/`AnswerOption` (type-agnostic), motifs, explicação de erro, `PracticeSession`/`SessionResultReported`, geração de variações; `PracticeScreen` é a tela de sessão, `PracticeController` o notifier e `ExerciseCardFlow` o card de um exercício (dirigido por `onAnswer`/`onAdvance`, reusável pelo Nivelamento) — serve intervalo, acorde e escala.
@@ -73,7 +74,7 @@ Código gerado (`*.g.dart`, `*.drift.dart`) é **git-ignorado** e regenerado no 
 ```
 lib/
   app/            # shell: HomeShell, telas Home/Settings/erro
-  core/           # tokens, tema, MascotBubble, AppDatabase (+ recent_variants, placements), databaseProvider
+  core/           # tokens, tema, MascotBubble, AppDatabase (+ recent_variants, placements, preferences), databaseProvider, ThemePreferenceRepository
   curriculo/      # catálogo como dado: modelos, CurriculoRepository
   audio/          # AudioService, impl just_audio, testing/FakeAudioService
   exercicios/     # loop de prática: questão, motif, sessão, variações, explicação de erro, tela
@@ -84,9 +85,9 @@ assets/
   curriculum/catalog_v1.json   # conteúdo pedagógico da v1
   fonts/                       # Fredoka (só para falas do mascote / telas de vitória)
 tool/             # gates de CI (acima), ci.sh, setup.sh
-test/             # unit/widget (419) — usa FakeAudioService e Drift em memória
+test/             # unit/widget (458) — usa FakeAudioService e Drift em memória
 integration_test/ # E2E on-device (23) — áudio real, Drift real, provider graph real
-drift_schemas/    # snapshots de schema v1, v2, v3
+drift_schemas/    # snapshots de schema v1, v2, v3, v4
 docs/             # auditoria de contraste, proveniência das amostras
 experiments/      # protótipos fora do app (meow-sampler)
 _bmad-output/     # artefatos BMad (planejamento, implementação, qualidade)
@@ -121,7 +122,7 @@ export PATH="$HOME/development/flutter/bin:$PATH"
 ```bash
 flutter pub get
 dart run build_runner build --delete-conflicting-outputs   # gera *.g.dart / *.drift.dart (git-ignorados)
-flutter test                                                # 419 testes unit/widget, ~1,5 min
+flutter test                                                # 458 testes unit/widget, ~1,5 min
 dart run tool/ci.sh                                          # todos os gates de CI, exit agregado
 ```
 
@@ -202,7 +203,7 @@ Lista completa em [`deferred-work.md`](_bmad-output/implementation-artifacts/def
 
 ## Roadmap
 
-- **Epic 1** (atual) — loop de reconhecimento jogável, sem voz. Faltam 1.9 e 1.10.
+- **Epic 1** (atual) — loop de reconhecimento jogável, sem voz. Falta a 1.10 sair de review; depois, o fechamento do épico (pendências do quality review).
 - **Epic 2** — Progressão: skill tree, medidores de esforço/habilidade, dificuldade adaptativa, baseline do dia 1.
 - **Epic 3** — Produção vocal: detecção de pitch (spike 3.1 em andamento), push-to-talk, módulo de Resolução ativo.
 - **Epic 4** — Telemetria passiva de calibração.
