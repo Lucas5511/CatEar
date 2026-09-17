@@ -1,11 +1,36 @@
 import 'package:catear/app/database_error_screen.dart';
 import 'package:catear/app/home_shell.dart';
 import 'package:catear/core/core.dart';
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+
+/// An in-memory database for the Settings tab, which `HomeShell` builds
+/// eagerly. These tests assert that *no* unexpected error escapes, so the
+/// screen's two platform-backed reads — the theme preference and the version —
+/// have to be given something real rather than left to fail quietly.
+List<Override> _overrides() => [
+  databaseProvider.overrideWith((ref) async {
+    final db = AppDatabase(NativeDatabase.memory());
+    ref.onDispose(db.close);
+    return db;
+  }),
+];
 
 void main() {
+  setUpAll(() {
+    PackageInfo.setMockInitialValues(
+      appName: 'CatEar',
+      packageName: 'app.catear',
+      version: '1.0.0',
+      buildNumber: '1',
+      buildSignature: '',
+    );
+  });
+
   testWidgets('no overflow at TextScaler.linear(2.0)', (tester) async {
     final errors = <FlutterErrorDetails>[];
     final previous = FlutterError.onError;
@@ -14,6 +39,7 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
+        overrides: _overrides(),
         child: MaterialApp(
           theme: appTheme(Brightness.light),
           home: const MediaQuery(
@@ -69,6 +95,7 @@ void main() {
   testWidgets('NavigationBar touch targets are >= 48dp tall', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
+        overrides: _overrides(),
         child: MaterialApp(
           theme: appTheme(Brightness.light),
           home: const HomeShell(),

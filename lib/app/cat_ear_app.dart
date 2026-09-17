@@ -18,6 +18,10 @@ class CatEarApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
     final database = ref.watch(databaseProvider);
+    // Read at the same gate as the database (Story 1.10): both come from the
+    // same file, and the boot screen already covers the wait, so no frame with
+    // *content* is ever painted in a theme the learner did not choose.
+    final storedTheme = ref.watch(storedThemeModeProvider);
 
     return MaterialApp(
       title: 'CatEar',
@@ -25,6 +29,12 @@ class CatEarApp extends ConsumerWidget {
       theme: appTheme(Brightness.light),
       darkTheme: appTheme(Brightness.dark),
       themeMode: themeMode,
+      // No cross-fade between the two colour schemes. On a tap it is what
+      // "applies in the same frame" means; at boot it is what keeps the first
+      // frame with content from starting out in the theme the learner did not
+      // choose and fading into the one they did — the flash Story 1.10 is
+      // about.
+      themeAnimationDuration: Duration.zero,
       supportedLocales: const [Locale('pt', 'BR')],
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
@@ -36,7 +46,16 @@ class CatEarApp extends ConsumerWidget {
         error: (_, _) => DatabaseErrorScreen(
           onRetry: () => ref.invalidate(databaseProvider),
         ),
-        data: (_) => const _EntryGate(),
+        // `storedThemeMode` never errors — an unreadable preference degrades to
+        // "follow the system" — so the only state left to wait on is a first
+        // read that has not landed yet. A *re*-read (the retry below reopens
+        // the database, and every provider hanging off it recomputes) keeps its
+        // previous value, and swapping the shell out for the boot screen then
+        // would throw away the first-use gate's decision and the selected tab
+        // for a value that is about to come back the same.
+        data: (_) => storedTheme.isLoading && !storedTheme.hasValue
+            ? const _BootScreen()
+            : const _EntryGate(),
       ),
     );
   }

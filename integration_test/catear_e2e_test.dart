@@ -8,7 +8,8 @@
 // as a new file.
 //
 // Covered:
-//   - app shell (Story 1.1): boot gate, 4-tab navigation, theme, Android back
+//   - app shell (Story 1.1 / 1.10): boot gate, 4-tab navigation, theme,
+//     Android back, and the real build version in Settings → Sobre
 //   - levelling (Story 1.9): first boot → the whole levelling over real audio
 //     → summary → Home, and the second boot landing on Home off the real
 //     `placements` row
@@ -23,6 +24,7 @@
 // The database is overridden with an in-memory Drift database so the suite runs
 // both headless and on-device; everything else is the real provider graph.
 
+import 'package:catear/app/app_version.dart';
 import 'package:catear/app/cat_ear_app.dart';
 import 'package:catear/app/database_error_screen.dart';
 import 'package:catear/app/home_shell.dart';
@@ -251,6 +253,33 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Seguir o sistema'), findsOneWidget);
       expect(navBar(tester).selectedIndex, 3);
+
+      // The only place `package_info_plus` actually talks to the platform: the
+      // widget suite injects the value through `setMockInitialValues`, which
+      // answers from a static before the channel is ever touched, so a plugin
+      // that silently stopped resolving would ship with everything else green.
+      // Read the tile's own `subtitle`, not "the last Text under it": a
+      // `.last` on `find.byType(Text)` ranks over the WHOLE tree, and the
+      // last Text in the running app is the `NavigationBar`'s "Ajustes"
+      // label, which is no descendant of this tile — the finder then matches
+      // nothing and dies as `Bad state: No element`. It only looked right
+      // against a tree with the screen alone and no shell around it.
+      final version =
+          (tester
+                      .widget<ListTile>(find.widgetWithText(ListTile, 'Versão'))
+                      .subtitle!
+                  as Text)
+              .data!;
+      expect(
+        version,
+        isNot(unknownAppVersion),
+        reason: 'the build version degraded to "—" on a real device',
+      );
+      expect(
+        version,
+        matches(RegExp(r'^\S+ \(\S+\)$')),
+        reason: 'expected "version (build)", got "$version"',
+      );
 
       await tester.tap(find.text('Home'));
       await tester.pumpAndSettle();

@@ -18,8 +18,8 @@ Este épico entrega um app de treino de ouvido jogável, sem a parte de voz. Ao 
 - Story 1.7: Estrutura de sessão de 10–15 minutos
 - Story 1.8: Geração de variações (anti-decoreba)
 - Story 1.8b: Costura do card de exercício (`ExerciseCardFlow`, pré-1.9)
-- Story 1.9: Nivelamento por reconhecimento
-- Story 1.10: Tela de Settings
+- Story 1.9: Nivelamento por reconhecimento (entregue: 7 cards via `ExerciseCardFlow`, `MascotBubble` em `core/widgets/`)
+- Story 1.10: Tela de Settings (entregue: tema persistido em `preferences` schema v4, versão real via `package_info_plus`, gancho de Microfone desabilitado)
 
 ## Requirements & Constraints
 
@@ -45,7 +45,7 @@ Este épico entrega um app de treino de ouvido jogável, sem a parte de voz. Ao 
 - **Amostras (Story 1.3b):** cobrem cada `audioSampleRef` do catálogo; timbre real em contexto curto; formato/sample rate/loudness normalizados; licença rastreável. Transposição em runtime gera variação de tonalidade sem multiplicar amostras.
 - **Eventos de domínio (AD-2 / AR-4):** `SessionResultReported` (Exercícios → Progressão): `sessionId` (UUID v4 na abertura), `attempts: List<ExerciseAttempt>` — uma entrada por tentativa (`exerciseType`, `wasCorrect`, `errorType?`, `reactionTimeMs`); agregação é da Progressão. Neste épico só é emitido/logado; consumidor entra no Epic 2. Sem event bus global — ingestão via método no `domain/` da Progressão chamado por provider Riverpod.
 - **"Sessão concluída":** chegou ao fim da sequência **ou** aceitou o encerramento por tempo, com ≥1 exercício respondido. Sair antes é abandono → nenhum evento, tentativas descartadas para progressão.
-- **Single-writer parcial (AD-2):** o histórico de variações recentes por tipo pertence à **Progressão**. A Story 1.8 cria a fatia mínima de `progressao/` (tabela + repositório de escrita); a Story 2.1 estende o mesmo módulo sem reescrita.
+- **Single-writer parcial (AD-2):** o histórico de variações recentes por tipo pertence à **Progressão**. A Story 1.8 cria a fatia mínima de `progressao/` (tabela + repositório de escrita); a Story 2.1 estende o mesmo módulo sem reescrita. **Desde a 1.9, o nível de partida também é dado da Progressão:** tabela `placements` (schema v3), port `PlacementRepository` + `placementProvider`; o Nivelamento só escreve por esse port, e o gate de boot em `CatEarApp` lê por ele.
 - **Convenções (AR-11):** IDs `String` UUID v4; datas ISO 8601 UTC no banco, conversão para local só na apresentação; erros de domínio como `sealed class` por módulo; estado assíncrono via `AsyncValue`.
 
 ## UX & Interaction Patterns
@@ -59,7 +59,7 @@ Este épico entrega um app de treino de ouvido jogável, sem a parte de voz. Ao 
 - **Estados (UX-DR12, parcial):** primeiro uso → nivelamento direto; correta → feedback visual+sonoro imediato, sem mascote; incorreta → mascote em bubble curto, sem tela cheia; sessão > 15 min → oferece encerrar sem culpa.
 - **Primitivas (UX-DR13):** tap para múltipla escolha; swipe não é navegação primária na sessão. Banido: paywall na sessão, notificações agressivas de streak, texturas/ícones de partitura.
 - **Microcopy (UX-DR14):** frases curtas, professor gentil via mascote; erro nomeia a confusão; sem hype.
-- **Settings (Story 1.10):** tela funcional — tema (claro/escuro/sistema) aplicado na hora + "Sobre" com versão. Gancho reservado (ausente/desabilitado na v1) para o item de Microfone do Epic 3. Sem conta/login na v1.
+- **Settings (Story 1.10):** tela funcional — tema (claro/escuro/sistema) aplicado na hora, **persistido** na tabela k/v `preferences` (schema v4, via `ThemePreferenceRepository` em `core/`) e restaurado no mesmo gate de boot do banco, antes do primeiro frame com conteúdo + "Sobre" com a versão real do build (`package_info_plus`, único ponto de uso em `lib/app/app_version.dart`). Gancho reservado (item desabilitado, sem pedir permissão) para o Microfone do Epic 3. Sem conta/login na v1.
 
 ## Cross-Story Dependencies
 

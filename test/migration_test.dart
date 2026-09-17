@@ -22,8 +22,9 @@ import 'generated/migrations/schema.dart';
 /// Story 1.8 cashed the promise in: `recent_variants` arrives at v2 through
 /// `onUpgrade`, and the 1 → 2 case below is the proof that an existing install
 /// keeps its data across the step. Story 1.9 repeats it: `placements` arrives
-/// at v3, and the 2 → 3 case proves the v2 rows survive. When a later story
-/// adds a table:
+/// at v3, and the 2 → 3 case proves the v2 rows survive. Story 1.10 again:
+/// `preferences` arrives at v4, and the 3 → 4 case proves both older tables
+/// keep their rows. When a later story adds a table:
 ///   1. `dart run drift_dev schema dump lib/core/database/app_database.dart drift_schemas/`
 ///   2. `dart run drift_dev schema generate drift_schemas/ test/generated/migrations/`
 ///   3. add a `migrateAndValidate(db, N)` case below, with the same
@@ -184,7 +185,69 @@ void main() {
     final schema = await verifier.schemaAt(3);
     expect(_userTables(schema.rawDatabase), ['placements', 'recent_variants']);
   });
+
+  test('migrating a v3 database to v4 creates preferences', () async {
+    final connection = await verifier.startAt(3);
+    final db = AppDatabase(connection.executor);
+    addTearDown(db.close);
+
+    await verifier.migrateAndValidate(db, 4);
+  });
+
+  test('migrating a v1 database straight to v4 walks every step', () async {
+    // An install that skipped two releases: `onUpgrade` runs once with
+    // `from = 1`, and all three `if (from < N)` blocks have to fire.
+    final connection = await verifier.startAt(1);
+    final db = AppDatabase(connection.executor);
+    addTearDown(db.close);
+
+    await verifier.migrateAndValidate(db, 4);
+  });
+
+  test('rows written at v3 survive the v4 migration', () async {
+    // Story 1.10: a learner who practised and was levelled on a v3 build keeps
+    // both their anti-decoreba history and their starting level when the
+    // preferences table arrives.
+    final schema = await verifier.schemaAt(3);
+    schema.rawDatabase.execute(
+      'INSERT INTO recent_variants (relation_key, root_token, used_at) '
+      "VALUES ('interval:M3:asc', 'sax_c4', '2026-09-09T00:00:00.000Z')",
+    );
+    schema.rawDatabase.execute(
+      'INSERT INTO placements (stage_id, correct_count, recorded_at) '
+      "VALUES ('s-quarta', 3, '2026-09-15T00:00:00.000Z')",
+    );
+
+    final db = AppDatabase(schema.newConnection());
+    addTearDown(db.close);
+    await db.customSelect('SELECT 1').get(); // forces the upgrade to run
+
+    final survivors = await db.recentVariantsDao.mostRecent(10);
+    expect(survivors.map((r) => r.rootToken).toList(), ['sax_c4']);
+    expect((await db.placementsDao.current())?.stageId, 's-quarta');
+
+    // …and the new table is empty (no preference was ever stored — which is
+    // what makes the upgraded install keep following the system theme) and
+    // usable straight after the upgrade, not just present in `sqlite_schema`.
+    expect(await db.preferencesDao.get(_themeModeKey), isNull);
+    await db.preferencesDao.put(_themeModeKey, 'dark');
+    expect(await db.preferencesDao.get(_themeModeKey), 'dark');
+  });
+
+  test('v4 schema holds exactly the three shipped tables', () async {
+    final schema = await verifier.schemaAt(4);
+    expect(_userTables(schema.rawDatabase), [
+      'placements',
+      'preferences',
+      'recent_variants',
+    ]);
+  });
 }
+
+/// The `preferences` key the theme repository owns. A local copy: the key is
+/// `core/`'s business, not part of its public surface, and the round-trip tests
+/// in `test/core/theme_preference_test.dart` are what prove it is this one.
+const String _themeModeKey = 'theme_mode';
 
 /// The non-internal tables of [database], sorted.
 List<String> _userTables(dynamic database) => (database.select(

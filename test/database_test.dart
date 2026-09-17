@@ -3,11 +3,11 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('AppDatabase opens at schema v3 and runs onCreate', () async {
+  test('AppDatabase opens at schema v4 and runs onCreate', () async {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
 
-    expect(db.schemaVersion, 3);
+    expect(db.schemaVersion, 4);
 
     // Forces the connection open -> beforeOpen + onCreate run without error.
     final row = await db
@@ -23,5 +23,11 @@ void main() {
     // upgrade half.
     expect(await db.recentVariantsDao.countAll(), 0);
     expect(await db.placementsDao.countAll(), 0);
+    expect(await db.preferencesDao.get(_themeModeKey), isNull);
   });
 }
+
+/// The `preferences` key the theme repository owns. A local copy: the key is
+/// `core/`'s business, not part of its public surface, and the round-trip tests
+/// in `test/core/theme_preference_test.dart` are what prove it is this one.
+const String _themeModeKey = 'theme_mode';

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:catear/app/cat_ear_app.dart';
 import 'package:catear/app/database_error_screen.dart';
 import 'package:catear/app/home_shell.dart';
@@ -279,6 +281,215 @@ void main() {
 
     expect(find.byType(DatabaseErrorScreen), findsNothing);
     expect(find.byType(HomeShell), findsOneWidget);
+  });
+
+  // --- Story 1.10: the theme choice survives a restart ------------------------
+
+  /// Records a level (so the gate lands on the shell) and a theme choice, both
+  /// through the real ports, the way the app writes them.
+  Future<void> seed(AppDatabase db, ThemeMode mode) async {
+    final container = ProviderContainer(
+      overrides: [databaseProvider.overrideWith((ref) async => db)],
+    );
+    await container
+        .read(placementRepositoryProvider)
+        .record(stageId: 's-quarta', correctCount: 3);
+    await container.read(themePreferenceRepositoryProvider).write(mode);
+    container.dispose();
+  }
+
+  ThemeMode selectedThemeRadio(WidgetTester tester) => tester
+      .widget<RadioGroup<ThemeMode>>(find.byType(RadioGroup<ThemeMode>))
+      .groupValue!;
+
+  testWidgets('booting with "Escuro" stored: no frame of content is ever '
+      'painted in the wrong theme', (tester) async {
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    await seed(db, ThemeMode.dark);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          audioServiceProvider.overrideWithValue(FakeAudioService()),
+          databaseProvider.overrideWith((ref) async => db),
+        ],
+        child: const CatEarApp(),
+      ),
+    );
+
+    // Frame by frame through the whole boot: the moment the shell exists it is
+    // already dark. A preference read that happened *after* the gate opened
+    // would show one light frame here, which is the flash this test exists for.
+    var sawContent = false;
+    for (var frame = 0; frame < 12; frame++) {
+      await tester.pump();
+      final shell = find.byType(HomeShell);
+      if (shell.evaluate().isEmpty) continue;
+      sawContent = true;
+      expect(
+        Theme.of(tester.element(shell)).brightness,
+        Brightness.dark,
+        reason: 'frame $frame painted the shell in the light theme',
+      );
+    }
+    expect(sawContent, isTrue, reason: 'the boot never reached the shell');
+
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ajustes'));
+    await tester.pumpAndSettle();
+    expect(selectedThemeRadio(tester), ThemeMode.dark);
+  });
+
+  testWidgets('choosing "Escuro" survives a restart on the same database', (
+    tester,
+  ) async {
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    // A levelled install, no theme stored: the pre-1.10 state.
+    final container = ProviderContainer(
+      overrides: [databaseProvider.overrideWith((ref) async => db)],
+    );
+    await container
+        .read(placementRepositoryProvider)
+        .record(stageId: 's-quarta', correctCount: 3);
+    container.dispose();
+
+    Future<void> boot() async {
+      await tester.pumpWidget(
+        ProviderScope(
+          // A new scope: every provider is rebuilt from the database, which is
+          // what reopening the app does.
+          key: UniqueKey(),
+          overrides: [
+            audioServiceProvider.overrideWithValue(FakeAudioService()),
+            databaseProvider.overrideWith((ref) async => db),
+          ],
+          child: const CatEarApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await boot();
+    expect(
+      Theme.of(tester.element(find.byType(HomeShell))).brightness,
+      Brightness.light,
+    );
+
+    await tester.tap(find.text('Ajustes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Escuro'));
+    await tester.pumpAndSettle();
+
+    await boot();
+
+    expect(
+      Theme.of(tester.element(find.byType(HomeShell))).brightness,
+      Brightness.dark,
+    );
+    await tester.tap(find.text('Ajustes'));
+    await tester.pumpAndSettle();
+    expect(selectedThemeRadio(tester), ThemeMode.dark);
+  });
+
+  testWidgets('the gate holds the boot screen until the theme read lands, '
+      'even when the database and the level are already there', (tester) async {
+    // Both other reads resolve immediately, so nothing but the theme read can
+    // hold the gate: delete the `storedTheme` branch of `CatEarApp` and this is
+    // the test that goes red. The other boot tests cannot catch it — in them
+    // the theme read happens to finish first.
+    final theme = Completer<ThemeMode?>();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          levelled,
+          databaseProvider.overrideWith((ref) async {
+            final db = AppDatabase(NativeDatabase.memory());
+            addTearDown(db.close);
+            return db;
+          }),
+          storedThemeModeProvider.overrideWith((ref) => theme.future),
+        ],
+        child: const CatEarApp(),
+      ),
+    );
+
+    for (var frame = 0; frame < 6; frame++) {
+      await tester.pump();
+      expect(
+        find.byType(HomeShell),
+        findsNothing,
+        reason: 'frame $frame showed content before the theme was known',
+      );
+      expect(find.byType(NivelamentoScreen), findsNothing);
+    }
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    theme.complete(ThemeMode.dark);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(HomeShell), findsOneWidget);
+    expect(
+      Theme.of(tester.element(find.byType(HomeShell))).brightness,
+      Brightness.dark,
+    );
+  });
+
+  testWidgets('a mid-session database refresh keeps the chosen theme and the '
+      'shell it was chosen from', (tester) async {
+    // `DatabaseErrorScreen`'s retry invalidates `databaseProvider`, and every
+    // provider below it recomputes — the theme preference included. Two things
+    // must not happen: the choice reverting to what the provider held before
+    // the write, and the whole shell being swapped for the boot screen while
+    // the re-read is in flight.
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          // Overridden, so invalidating the database cannot make the *level*
+          // read reload: this test is about the theme branch of the gate.
+          levelled,
+          databaseProvider.overrideWith((ref) async => db),
+        ],
+        child: const CatEarApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Ajustes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Escuro'));
+    await tester.pumpAndSettle();
+    expect(
+      Theme.of(tester.element(find.byType(HomeShell))).brightness,
+      Brightness.dark,
+    );
+
+    ProviderScope.containerOf(tester.element(find.byType(CatEarApp)))
+        .invalidate(databaseProvider);
+
+    for (var frame = 0; frame < 6; frame++) {
+      await tester.pump();
+      expect(
+        find.byType(HomeShell),
+        findsOneWidget,
+        reason: 'frame $frame replaced the shell with the boot screen',
+      );
+      expect(
+        Theme.of(tester.element(find.byType(HomeShell))).brightness,
+        Brightness.dark,
+        reason: 'frame $frame fell back to the light theme',
+      );
+    }
+    await tester.pumpAndSettle();
+
+    expect(selectedThemeRadio(tester), ThemeMode.dark);
+    // Still on the tab the choice was made from — the shell was never rebuilt.
+    expect(find.text('Seguir o sistema'), findsOneWidget);
   });
 
   testWidgets('a failed level read shows the error screen on the very next '
